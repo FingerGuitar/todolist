@@ -1,0 +1,62 @@
+# ================================================
+# Claude Code（全部排除）
+# ================================================
+.claude/
+.claude-mem/
+CLAUDE.md
+.mcp.json
+
+# ================================================
+# 文档目录（不上传）
+# ================================================
+docs/
+
+# ================================================
+# Electron-Vite 项目
+# ================================================
+
+# Dependencies
+node_modules/
+
+# Build output
+out/
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# SQLite database
+*.db
+*.db-wal
+*.db-shm
+
+# Electron Builder
+dist/
+release/
+
+# Attachments (runtime user data)
+attachments/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Session logs
+logs/
+
+# Misc
+nul

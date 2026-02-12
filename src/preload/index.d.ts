@@ -1,0 +1,69 @@
+import type {
+  TaskWithRelations,
+  TaskListFilter,
+  CreateTaskInput,
+  UpdateTaskInput,
+  ReorderInput,
+  Category,
+  CreateCategoryInput,
+  UpdateCategoryInput,
+  Tag,
+  CreateTagInput,
+  UpdateTagInput,
+  TaskAttachment
+} from '../shared/types'
+
+export interface ElectronAPI {
+  platform: NodeJS.Platform
+
+  // Tasks
+  taskList(filter?: TaskListFilter): Promise<TaskWithRelations[]>
+  taskGet(id: number): Promise<TaskWithRelations | null>
+  taskCreate(input: CreateTaskInput): Promise<TaskWithRelations>
+  taskUpdate(input: UpdateTaskInput): Promise<TaskWithRelations>
+  taskDelete(id: number): Promise<{ success: boolean }>
+  taskReorder(items: ReorderInput[]): Promise<{ success: boolean }>
+  taskToggleComplete(id: number): Promise<TaskWithRelations | null>
+
+  // Categories
+  categoryList(): Promise<Category[]>
+  categoryCreate(input: CreateCategoryInput): Promise<Category>
+  categoryUpdate(input: UpdateCategoryInput): Promise<Category>
+  categoryDelete(id: number): Promise<{ success: boolean }>
+
+  // Tags
+  tagList(): Promise<Tag[]>
+  tagCreate(input: CreateTagInput): Promise<Tag>
+  tagUpdate(input: UpdateTagInput): Promise<Tag>
+  tagDelete(id: number): Promise<{ success: boolean }>
+
+  // Attachments
+  attachmentAdd(taskId: number): Promise<TaskAttachment | null>
+  attachmentList(taskId: number): Promise<TaskAttachment[]>
+  attachmentDelete(id: number): Promise<{ success: boolean }>
+  attachmentOpen(id: number): Promise<{ success: boolean }>
+  attachmentShowInFolder(id: number): Promise<{ success: boolean }>
+
+  // Theme
+  themeGet(): Promise<{ theme: string; customColor?: string }>
+  themeSet(config: { theme: string; customColor?: string }): Promise<{ success: boolean }>
+
+  // Window controls
+  windowMinimize(): Promise<void>
+  windowMaximize(): Promise<void>
+  windowClose(): Promise<void>
+
+  // Sidebar
+  sidebarToggle(): Promise<void>
+  sidebarExpand(): Promise<void>
+  sidebarCollapse(): Promise<void>
+  sidebarShowMain(): Promise<void>
+}
+
+declare global {
+  interface Window {
+    api: ElectronAPI
+  }
+}
+
+export {}

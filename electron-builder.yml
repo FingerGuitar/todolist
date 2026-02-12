@@ -1,0 +1,30 @@
+appId: com.todolist.app
+productName: TodoList
+directories:
+  buildResources: resources
+  output: dist
+files:
+  - out/**/*
+  - package.json
+asarUnpack:
+  - "node_modules/better-sqlite3/**"
+  - "node_modules/bindings/**"
+  - "node_modules/file-uri-to-path/**"
+extraResources:
+  - from: "resources/icon.ico"
+    to: "icon.ico"
+  - from: "resources/icon.png"
+    to: "icon.png"
+  - from: "resources/tray-icon.ico"
+    to: "tray-icon.ico"
+win:
+  icon: "resources/icon.ico"
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
