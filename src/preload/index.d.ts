@@ -10,7 +10,8 @@ import type {
   Tag,
   CreateTagInput,
   UpdateTagInput,
-  TaskAttachment
+  TaskAttachment,
+  AppSettings
 } from '../shared/types'
 
 export interface ElectronAPI {
@@ -47,6 +48,10 @@ export interface ElectronAPI {
   // Theme
   themeGet(): Promise<{ theme: string; customColor?: string }>
   themeSet(config: { theme: string; customColor?: string }): Promise<{ success: boolean }>
+
+  // Settings
+  settingsGet(): Promise<AppSettings>
+  settingsSet(settings: AppSettings): Promise<{ success: boolean }>
 
   // Window controls
   windowMinimize(): Promise<void>

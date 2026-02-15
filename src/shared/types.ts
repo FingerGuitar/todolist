@@ -29,6 +29,7 @@ export interface Task {
   dueDate: string | null
   reminderAt: string | null
   completedAt: string | null
+  startedAt: string | null
   sortOrder: number
   createdAt: string
   updatedAt: string
@@ -45,6 +46,7 @@ export interface Category {
   name: string
   color: string
   icon: string | null
+  parentId: number | null
   sortOrder: number
   createdAt: string
 }
@@ -64,6 +66,19 @@ export interface TaskAttachment {
   mimeType: string
   size: number
   createdAt: string
+}
+
+// ---- App Settings ----
+
+export interface AppSettings {
+  theme: string
+  customColor?: string
+  showTaskDuration: boolean
+  autoLaunch: boolean
+  closeToTray: boolean
+  confirmBeforeDelete: boolean
+  autoPostponeOverdue: boolean
+  sloganStyle: 'off' | 'programmer' | 'motivational' | 'sarcastic' | 'literary' | 'funny'
 }
 
 // ---- IPC payload types ----
@@ -95,11 +110,12 @@ export interface TaskListFilter {
   status?: Status | Status[]
   priority?: Priority | Priority[]
   categoryId?: number | null
+  categoryIds?: number[]
   tagIds?: number[]
   search?: string
   dueBefore?: string
   dueAfter?: string
-  sortBy?: 'createdAt' | 'dueDate' | 'priority' | 'sortOrder' | 'title'
+  sortBy?: 'createdAt' | 'dueDate' | 'priority' | 'sortOrder' | 'title' | 'priority-createdAt'
   sortOrder?: 'asc' | 'desc'
 }
 
@@ -107,6 +123,7 @@ export interface CreateCategoryInput {
   name: string
   color?: string
   icon?: string | null
+  parentId?: number | null
 }
 
 export interface UpdateCategoryInput {
@@ -114,6 +131,7 @@ export interface UpdateCategoryInput {
   name?: string
   color?: string
   icon?: string | null
+  parentId?: number | null
   sortOrder?: number
 }
 
@@ -163,6 +181,9 @@ export const IPC_CHANNELS = {
   // Theme
   THEME_GET: 'theme:get',
   THEME_SET: 'theme:set',
+  // Settings
+  SETTINGS_GET: 'settings:get',
+  SETTINGS_SET: 'settings:set',
   // Window
   WINDOW_MINIMIZE: 'window:minimize',
   WINDOW_MAXIMIZE: 'window:maximize',

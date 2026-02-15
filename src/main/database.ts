@@ -34,6 +34,8 @@ export function initDatabase(): void {
   db = drizzle(sqlite, { schema })
 
   createTables()
+  migrateSchema()
+  migrateTasksSchema()
   seedDefaults()
 }
 
@@ -41,9 +43,10 @@ function createTables(): void {
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
       color TEXT NOT NULL DEFAULT '#6366f1',
       icon TEXT,
+      parent_id INTEGER REFERENCES categories(id),
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
@@ -94,6 +97,93 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_task_tags_tag_id ON task_tags(tag_id);
     CREATE INDEX IF NOT EXISTS idx_task_attachments_task_id ON task_attachments(task_id);
   `)
+}
+
+function migrateSchema(): void {
+  const cols = sqlite.pragma('table_info(categories)') as { name: string }[]
+  const hasParentId = cols.some((c) => c.name === 'parent_id')
+
+  if (!hasParentId) {
+    // 旧表缺少 parent_id 且有 UNIQUE(name) 约束，需要重建表
+    sqlite.pragma('foreign_keys = OFF')
+    sqlite.exec('BEGIN TRANSACTION')
+    try {
+      sqlite.exec(`
+        CREATE TABLE categories_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          color TEXT NOT NULL DEFAULT '#6366f1',
+          icon TEXT,
+          parent_id INTEGER REFERENCES categories_new(id),
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+      `)
+      sqlite.exec(`
+        INSERT INTO categories_new (id, name, color, icon, sort_order, created_at)
+        SELECT id, name, color, icon, sort_order, created_at FROM categories
+      `)
+      sqlite.exec('DROP TABLE categories')
+      sqlite.exec('ALTER TABLE categories_new RENAME TO categories')
+      sqlite.exec('CREATE INDEX IF NOT EXISTS idx_categories_parent_id ON categories(parent_id)')
+      sqlite.exec('COMMIT')
+    } catch (e) {
+      sqlite.exec('ROLLBACK')
+      throw e
+    }
+    sqlite.pragma('foreign_keys = ON')
+  } else {
+    // 已有 parent_id 列，但可能仍有 UNIQUE(name) 约束需要移除
+    const indexList = sqlite.pragma('index_list(categories)') as {
+      name: string
+      unique: number
+    }[]
+    const hasNameUnique = indexList.some((idx) => {
+      if (!idx.unique) return false
+      const idxCols = sqlite.pragma(`index_info(${idx.name})`) as { name: string }[]
+      return idxCols.length === 1 && idxCols[0].name === 'name'
+    })
+    if (hasNameUnique) {
+      sqlite.pragma('foreign_keys = OFF')
+      sqlite.exec('BEGIN TRANSACTION')
+      try {
+        sqlite.exec(`
+          CREATE TABLE categories_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            color TEXT NOT NULL DEFAULT '#6366f1',
+            icon TEXT,
+            parent_id INTEGER REFERENCES categories_new(id),
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+          )
+        `)
+        sqlite.exec(`
+          INSERT INTO categories_new (id, name, color, icon, parent_id, sort_order, created_at)
+          SELECT id, name, color, icon, parent_id, sort_order, created_at FROM categories
+        `)
+        sqlite.exec('DROP TABLE categories')
+        sqlite.exec('ALTER TABLE categories_new RENAME TO categories')
+        sqlite.exec('CREATE INDEX IF NOT EXISTS idx_categories_parent_id ON categories(parent_id)')
+        sqlite.exec('COMMIT')
+      } catch (e) {
+        sqlite.exec('ROLLBACK')
+        throw e
+      }
+      sqlite.pragma('foreign_keys = ON')
+    } else {
+      // 确保索引存在
+      sqlite.exec('CREATE INDEX IF NOT EXISTS idx_categories_parent_id ON categories(parent_id)')
+    }
+  }
+}
+
+function migrateTasksSchema(): void {
+  // 迁移：添加 started_at 列
+  const taskCols = sqlite.pragma('table_info(tasks)') as { name: string }[]
+  if (!taskCols.some((c) => c.name === 'started_at')) {
+    sqlite.exec('ALTER TABLE tasks ADD COLUMN started_at TEXT')
+  }
 }
 
 function seedDefaults(): void {

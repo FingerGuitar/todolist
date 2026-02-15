@@ -59,9 +59,10 @@ interface CategoryFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   category?: Category | null
+  parentId?: number | null
 }
 
-export function CategoryForm({ open, onOpenChange, category }: CategoryFormProps) {
+export function CategoryForm({ open, onOpenChange, category, parentId }: CategoryFormProps) {
   const { createCategory, updateCategory } = useCategoryStore()
   const isEditing = !!category
 
@@ -85,7 +86,7 @@ export function CategoryForm({ open, onOpenChange, category }: CategoryFormProps
     if (isEditing) {
       await updateCategory({ id: category.id, name: trimmed, color, icon })
     } else {
-      await createCategory({ name: trimmed, color, icon })
+      await createCategory({ name: trimmed, color, icon, parentId: parentId ?? null })
     }
     onOpenChange(false)
   }
@@ -94,9 +95,13 @@ export function CategoryForm({ open, onOpenChange, category }: CategoryFormProps
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
-          <DialogTitle>{isEditing ? '编辑分类' : '新建分类'}</DialogTitle>
+          <DialogTitle>{isEditing ? '编辑分类' : parentId ? '新建子分类' : '新建分类'}</DialogTitle>
           <DialogDescription>
-            {isEditing ? '修改分类的名称、颜色和图标' : '创建一个新的分类来组织任务'}
+            {isEditing
+              ? '修改分类的名称、颜色和图标'
+              : parentId
+                ? '在当前分类下创建一个子分类'
+                : '创建一个新的分类来组织任务'}
           </DialogDescription>
         </DialogHeader>
 
@@ -164,7 +169,7 @@ export function CategoryForm({ open, onOpenChange, category }: CategoryFormProps
               取消
             </Button>
             <Button type="submit" disabled={!name.trim()}>
-              {isEditing ? '保存修改' : '创建分类'}
+              {isEditing ? '保存修改' : parentId ? '创建子分类' : '创建分类'}
             </Button>
           </DialogFooter>
         </form>

@@ -35,6 +35,10 @@ const api = {
   themeGet: () => ipcRenderer.invoke('theme:get'),
   themeSet: (config: unknown) => ipcRenderer.invoke('theme:set', config),
 
+  // Settings
+  settingsGet: () => ipcRenderer.invoke('settings:get'),
+  settingsSet: (settings: unknown) => ipcRenderer.invoke('settings:set', settings),
+
   // Window controls
   windowMinimize: () => ipcRenderer.invoke('window:minimize'),
   windowMaximize: () => ipcRenderer.invoke('window:maximize'),

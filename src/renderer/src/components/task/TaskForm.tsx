@@ -25,9 +25,9 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { useTaskStore, useCategoryStore, useTagStore } from '@/stores'
+import { useTaskStore, useCategoryStore, useTagStore, useSettingsStore } from '@/stores'
 import type { TaskWithRelations, Priority } from '@shared/types'
-import { formatLocalDate } from '@shared/date-utils'
+import { formatLocalDate, formatDuration } from '@shared/date-utils'
 
 const PRIORITY_OPTIONS: { value: string; label: string }[] = [
   { value: '0', label: '无' },
@@ -41,13 +41,15 @@ interface TaskFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   task?: TaskWithRelations | null
+  defaultCategoryId?: number
 }
 
-export function TaskForm({ open, onOpenChange, task }: TaskFormProps) {
+export function TaskForm({ open, onOpenChange, task, defaultCategoryId }: TaskFormProps) {
   const createTask = useTaskStore((s) => s.createTask)
   const updateTask = useTaskStore((s) => s.updateTask)
   const { categories, fetchCategories } = useCategoryStore()
   const { tags, fetchTags } = useTagStore()
+  const showDuration = useSettingsStore((s) => s.settings.showTaskDuration)
 
   const isEdit = !!task
 
@@ -81,9 +83,9 @@ export function TaskForm({ open, onOpenChange, task }: TaskFormProps) {
       setTitle('')
       setDescription('')
       setPriority('0')
-      setCategoryId('none')
+      setCategoryId(defaultCategoryId ? String(defaultCategoryId) : 'none')
       setSelectedTagIds([])
-      setDueDate(undefined)
+      setDueDate(new Date())
     }
   }, [open, task])
 
@@ -278,6 +280,17 @@ export function TaskForm({ open, onOpenChange, task }: TaskFormProps) {
             </Popover>
           </div>
         </div>
+
+        {/* 任务用时信息（编辑模式 + 开关开启时显示） */}
+        {isEdit && showDuration && (task?.startedAt || task?.completedAt) && (
+          <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
+            {task.startedAt && <div>开始时间：{task.startedAt}</div>}
+            {task.completedAt && <div>完成时间：{task.completedAt}</div>}
+            {task.startedAt && task.completedAt && (
+              <div>总用时：{formatDuration(task.startedAt, task.completedAt)}</div>
+            )}
+          </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

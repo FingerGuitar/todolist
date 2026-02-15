@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { TaskListFilter, Status } from '@shared/types'
 import { STATUS } from '@shared/types'
 import { formatLocalDate } from '@shared/date-utils'
+import { useCategoryStore, getDescendantIds } from './category-store'
 
 export type ViewType = 'inbox' | 'today' | 'upcoming' | 'completed' | 'category' | 'tag' | 'all'
 
@@ -32,7 +33,7 @@ export const useFilterStore = create<FilterState>()((set, get) => ({
   selectedCategoryId: null,
   selectedTagId: null,
   searchQuery: '',
-  sortBy: 'sortOrder',
+  sortBy: 'priority-createdAt',
   sortOrder: 'asc',
 
   setView: (view) => set({ currentView: view }),
@@ -79,7 +80,9 @@ export const useFilterStore = create<FilterState>()((set, get) => ({
         break
       case 'category':
         if (selectedCategoryId !== null) {
-          filter.categoryId = selectedCategoryId
+          const allCategories = useCategoryStore.getState().categories
+          const descendantIds = getDescendantIds(allCategories, selectedCategoryId)
+          filter.categoryIds = [selectedCategoryId, ...descendantIds]
         }
         break
       case 'tag':

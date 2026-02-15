@@ -3,14 +3,16 @@ import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { initDatabase, closeDatabase } from './database'
 import { registerIpcHandlers } from './ipc-handlers'
+import { loadSettings } from './settings'
 import { createTray, destroyTray, refreshTrayMenu } from './tray'
 import { startReminderScheduler, stopReminderScheduler } from './reminder'
 import {
-  registerSidebarIpc,
-  destroySidebarWindow,
-  toggleSidebarMode,
-  isSidebarActive
-} from './sidebar'
+  registerDockIpc,
+  setupEdgeDetection,
+  destroyDockWindow,
+  toggleDockMode,
+  isDockActive
+} from './dock'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -75,7 +77,7 @@ function createWindow(): void {
     show: false,
     frame: true,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(__dirname, '../preload/index.mjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false
@@ -96,11 +98,14 @@ function createWindow(): void {
   mainWindow.on('maximize', () => saveWindowState(mainWindow!))
   mainWindow.on('unmaximize', () => saveWindowState(mainWindow!))
 
-  // Close to tray instead of quitting
+  // Close behavior: minimize to tray or quit based on settings
   mainWindow.on('close', (e) => {
     if (!app.isQuitting) {
-      e.preventDefault()
-      mainWindow!.hide()
+      const settings = loadSettings()
+      if (settings.closeToTray) {
+        e.preventDefault()
+        mainWindow!.hide()
+      }
     }
   })
 
@@ -129,22 +134,28 @@ app.isQuitting = false
 app.whenReady().then(() => {
   initDatabase()
   registerIpcHandlers()
+
+  // 同步开机自启动状态
+  const settings = loadSettings()
+  app.setLoginItemSettings({ openAtLogin: settings.autoLaunch })
+
   createWindow()
 
   if (mainWindow) {
-    registerSidebarIpc(mainWindow)
+    registerDockIpc(mainWindow)
+    setupEdgeDetection(mainWindow)
     createTray(
       mainWindow,
-      () => toggleSidebarMode(mainWindow),
-      isSidebarActive
+      () => toggleDockMode(mainWindow),
+      isDockActive
     )
   }
 
   startReminderScheduler()
 
-  // Ctrl+Shift+D: toggle sidebar mode
+  // Ctrl+Shift+D: toggle dock mode
   globalShortcut.register('Ctrl+Shift+D', () => {
-    toggleSidebarMode(mainWindow)
+    toggleDockMode(mainWindow)
     refreshTrayMenu()
   })
 
@@ -161,7 +172,7 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
-  destroySidebarWindow()
+  destroyDockWindow()
   stopReminderScheduler()
   destroyTray()
   closeDatabase()

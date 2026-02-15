@@ -1,16 +1,23 @@
-import { useEffect } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import {
   Inbox,
   CalendarDays,
   Clock,
   CheckCircle2,
   Plus,
-  Palette,
+  Settings,
   CheckSquare,
   Briefcase,
   User,
   BookOpen,
-  Tag as TagIcon
+  Tag as TagIcon,
+  ChevronRight,
+  ChevronDown,
+  MoreHorizontal,
+  FolderPlus,
+  ListPlus,
+  Pencil,
+  Trash2
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -19,15 +26,24 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
-import { useFilterStore, useCategoryStore, useTagStore, useThemeStore } from '@/stores'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog'
+import { useFilterStore, useCategoryStore, useTagStore } from '@/stores'
 import type { ViewType } from '@/stores'
-import { themeCategories, themes } from '@/themes'
+import { buildCategoryTree, getDescendantIds } from '@/stores/category-store'
+import type { CategoryTreeNode } from '@/stores/category-store'
 
 /** 将 Category.icon 字符串映射到 lucide 图标 */
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -78,30 +94,236 @@ interface SmartView {
 }
 
 const SMART_VIEWS: SmartView[] = [
-  { view: 'inbox', icon: Inbox, label: '收件箱' },
+  { view: 'inbox', icon: Inbox, label: '待办' },
   { view: 'today', icon: CalendarDays, label: '今天' },
   { view: 'upcoming', icon: Clock, label: '即将到来' },
   { view: 'completed', icon: CheckCircle2, label: '已完成' }
 ]
 
 interface SidebarProps {
-  onAddCategory?: () => void
+  onAddCategory?: (parentId?: number) => void
+  onEditCategory?: (categoryId: number) => void
   onAddTag?: () => void
+  onNewTask?: (categoryId?: number) => void
+  onOpenSettings?: () => void
 }
 
-export function Sidebar({ onAddCategory, onAddTag }: SidebarProps) {
+/** 递归渲染分类树节点 */
+function CategoryTreeItem({
+  node,
+  depth,
+  currentView,
+  selectedCategoryId,
+  expandedIds,
+  onToggleExpand,
+  onSelect,
+  onAddChild,
+  onEditCategory,
+  onDeleteCategory,
+  onNewTask
+}: {
+  node: CategoryTreeNode
+  depth: number
+  currentView: string
+  selectedCategoryId: number | null
+  expandedIds: Set<number>
+  onToggleExpand: (id: number) => void
+  onSelect: (id: number) => void
+  onAddChild: (parentId: number) => void
+  onEditCategory: (id: number) => void
+  onDeleteCategory: (id: number, name: string, hasChildren: boolean) => void
+  onNewTask: (categoryId: number) => void
+}) {
+  const isActive = currentView === 'category' && selectedCategoryId === node.id
+  const hasChildren = node.children.length > 0
+  const isExpanded = expandedIds.has(node.id)
+  const Icon = getCategoryIcon(node.icon)
+  const paddingLeft = 12 + depth * 16
+
+  return (
+    <>
+      <div
+        className={cn(
+          'group flex w-full items-center gap-1.5 py-1.5 rounded-md cursor-pointer',
+          'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors',
+          'text-sm',
+          isActive && 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+        )}
+        style={{ paddingLeft, paddingRight: 8 }}
+      >
+        {/* 折叠/展开按钮 */}
+        <button
+          type="button"
+          className={cn(
+            'h-4 w-4 shrink-0 flex items-center justify-center rounded-sm',
+            'hover:bg-sidebar-accent',
+            !hasChildren && 'invisible'
+          )}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleExpand(node.id)
+          }}
+        >
+          {hasChildren &&
+            (isExpanded ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            ))}
+        </button>
+
+        {/* 分类内容（可点击选中） */}
+        <button
+          type="button"
+          className="flex flex-1 items-center gap-2 min-w-0"
+          onClick={() => onSelect(node.id)}
+        >
+          <span
+            className="h-2.5 w-2.5 rounded-full shrink-0"
+            style={{ backgroundColor: node.color }}
+          />
+          <Icon className="h-3.5 w-3.5 shrink-0 opacity-60" />
+          <span className="truncate">{node.name}</span>
+        </button>
+
+        {/* hover 显示三点菜单 */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="h-5 w-5 shrink-0 flex items-center justify-center rounded-sm opacity-0 group-hover:opacity-100 hover:bg-sidebar-accent transition-opacity"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="start" className="w-40">
+            <DropdownMenuItem
+              className="cursor-pointer gap-2"
+              onClick={() => onNewTask(node.id)}
+            >
+              <ListPlus className="h-3.5 w-3.5" />
+              新建待办任务
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer gap-2"
+              onClick={() => onAddChild(node.id)}
+            >
+              <FolderPlus className="h-3.5 w-3.5" />
+              新建子分类
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="cursor-pointer gap-2"
+              onClick={() => onEditCategory(node.id)}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              编辑分类
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer gap-2 text-destructive focus:text-destructive"
+              onClick={() => onDeleteCategory(node.id, node.name, hasChildren)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              删除分类
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* 递归渲染子节点 */}
+      {hasChildren && isExpanded && (
+        <div>
+          {node.children.map((child) => (
+            <CategoryTreeItem
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              currentView={currentView}
+              selectedCategoryId={selectedCategoryId}
+              expandedIds={expandedIds}
+              onToggleExpand={onToggleExpand}
+              onSelect={onSelect}
+              onAddChild={onAddChild}
+              onEditCategory={onEditCategory}
+              onDeleteCategory={onDeleteCategory}
+              onNewTask={onNewTask}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+export function Sidebar({ onAddCategory, onEditCategory, onAddTag, onNewTask, onOpenSettings }: SidebarProps) {
   const { currentView, selectedCategoryId, selectedTagId, setView, setCategory, setTag } =
     useFilterStore()
-  const { categories, fetchCategories } = useCategoryStore()
+  const { categories, fetchCategories, deleteCategory } = useCategoryStore()
   const { tags, fetchTags } = useTagStore()
-  const { currentTheme, setTheme } = useThemeStore()
+
+  // 折叠/展开状态
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
+
+  // 删除确认弹窗状态
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    id: number
+    name: string
+    hasChildren: boolean
+  } | null>(null)
 
   useEffect(() => {
     fetchCategories()
     fetchTags()
   }, [fetchCategories, fetchTags])
 
-  const currentThemeLabel = themes[currentTheme]?.label ?? currentTheme
+  // 构建分类树
+  const categoryTree = useMemo(() => buildCategoryTree(categories), [categories])
+
+  const handleToggleExpand = useCallback((id: number) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [])
+
+  const handleSelectCategory = useCallback((id: number) => {
+    setCategory(id)
+  }, [setCategory])
+
+  const handleAddChild = useCallback((parentId: number) => {
+    onAddCategory?.(parentId)
+  }, [onAddCategory])
+
+  const handleEditCategory = useCallback((id: number) => {
+    onEditCategory?.(id)
+  }, [onEditCategory])
+
+  const handleDeleteCategory = useCallback((id: number, name: string, hasChildren: boolean) => {
+    setDeleteConfirm({ id, name, hasChildren })
+  }, [])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteConfirm) return
+    // 如果当前选中的分类被删除（含后代），重置到 inbox
+    if (currentView === 'category' && selectedCategoryId !== null) {
+      const allDeletedIds = new Set([deleteConfirm.id, ...getDescendantIds(categories, deleteConfirm.id)])
+      if (allDeletedIds.has(selectedCategoryId)) {
+        setView('inbox')
+      }
+    }
+    await deleteCategory(deleteConfirm.id)
+    setDeleteConfirm(null)
+  }, [deleteConfirm, deleteCategory, currentView, selectedCategoryId, categories, setView])
+
+  const handleNewTaskInCategory = useCallback((categoryId: number) => {
+    onNewTask?.(categoryId)
+  }, [onNewTask])
 
   return (
     <aside className="flex flex-col w-[260px] bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
@@ -137,41 +359,43 @@ export function Sidebar({ onAddCategory, onAddTag }: SidebarProps) {
               variant="ghost"
               size="icon"
               className="h-5 w-5 text-muted-foreground hover:text-sidebar-foreground"
-              onClick={onAddCategory}
+              onClick={() => onAddCategory?.()}
             >
               <Plus className="h-3.5 w-3.5" />
             </Button>
           </div>
           <nav className="flex flex-col gap-0.5">
-            {categories.map((cat) => {
-              const isActive =
-                currentView === 'category' && selectedCategoryId === cat.id
-              const Icon = getCategoryIcon(cat.icon)
-              return (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => {
-                    setView('category')
-                    setCategory(cat.id)
-                  }}
-                  className={cn(
-                    'flex w-full items-center gap-3 px-3 py-2 rounded-md cursor-pointer',
-                    'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors',
-                    'text-sm',
-                    isActive && 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
-                  )}
-                >
-                  <span
-                    className="h-3 w-3 rounded-full shrink-0"
-                    style={{ backgroundColor: cat.color }}
-                  />
-                  <Icon className="h-4 w-4 shrink-0 opacity-60" />
-                  <span className="truncate">{cat.name}</span>
-                </button>
-              )
-            })}
+            {categoryTree.map((node) => (
+              <CategoryTreeItem
+                key={node.id}
+                node={node}
+                depth={0}
+                currentView={currentView}
+                selectedCategoryId={selectedCategoryId}
+                expandedIds={expandedIds}
+                onToggleExpand={handleToggleExpand}
+                onSelect={handleSelectCategory}
+                onAddChild={handleAddChild}
+                onEditCategory={handleEditCategory}
+                onDeleteCategory={handleDeleteCategory}
+                onNewTask={handleNewTaskInCategory}
+              />
+            ))}
           </nav>
+
+          {/* 新建分类入口 */}
+          <button
+            type="button"
+            onClick={() => onAddCategory?.()}
+            className={cn(
+              'flex w-full items-center gap-3 px-3 py-2 rounded-md cursor-pointer',
+              'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors',
+              'text-sm text-muted-foreground'
+            )}
+          >
+            <Plus className="h-4 w-4 shrink-0" />
+            <span>新建分类</span>
+          </button>
 
           {/* Tags */}
           <div className="flex items-center justify-between mt-4 mb-2 px-3">
@@ -217,44 +441,39 @@ export function Sidebar({ onAddCategory, onAddTag }: SidebarProps) {
         </div>
       </ScrollArea>
 
-      {/* Theme Switcher */}
+      {/* Settings */}
       <div className="shrink-0 border-t border-sidebar-border p-3">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-2 text-sm text-sidebar-foreground"
-            >
-              <Palette className="h-4 w-4" />
-              <span className="truncate">{currentThemeLabel}</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="start" className="w-56">
-            {themeCategories.map((group, groupIndex) => (
-              <DropdownMenuGroup key={group.key}>
-                {groupIndex > 0 && <DropdownMenuSeparator />}
-                <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
-                {group.themes.map((theme) => (
-                  <DropdownMenuItem
-                    key={theme.name}
-                    onClick={() => setTheme(theme.name)}
-                    className={cn(
-                      'cursor-pointer',
-                      currentTheme === theme.name && 'bg-accent font-medium'
-                    )}
-                  >
-                    <span
-                      className="mr-2 h-3 w-3 rounded-full shrink-0 border border-border"
-                      style={{ backgroundColor: `hsl(${theme.colors.primary})` }}
-                    />
-                    {theme.label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuGroup>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-2 text-sm text-sidebar-foreground"
+          onClick={() => onOpenSettings?.()}
+        >
+          <Settings className="h-4 w-4" />
+          <span>设置</span>
+        </Button>
       </div>
+      {/* 删除确认弹窗 */}
+      <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除分类</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteConfirm?.hasChildren
+                ? `确定要删除分类「${deleteConfirm?.name}」及其所有子分类吗？该操作不可撤销，相关任务将变为未分类。`
+                : `确定要删除分类「${deleteConfirm?.name}」吗？该操作不可撤销，相关任务将变为未分类。`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleConfirmDelete}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </aside>
   )
 }

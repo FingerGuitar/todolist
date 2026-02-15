@@ -3,9 +3,10 @@ import { sql } from 'drizzle-orm'
 
 export const categories = sqliteTable('categories', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  name: text('name').notNull().unique(),
+  name: text('name').notNull(),
   color: text('color').notNull().default('#6366f1'),
   icon: text('icon'),
+  parentId: integer('parent_id'),
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: text('created_at')
     .notNull()
@@ -33,6 +34,7 @@ export const tasks = sqliteTable('tasks', {
   dueDate: text('due_date'),
   reminderAt: text('reminder_at'),
   completedAt: text('completed_at'),
+  startedAt: text('started_at'),
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: text('created_at')
     .notNull()

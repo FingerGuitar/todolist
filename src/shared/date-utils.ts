@@ -21,3 +21,23 @@ export function formatLocalDateTime(date: Date = new Date()): string {
 export function formatLocalDate(date: Date = new Date()): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
+
+/** Format duration between two datetime strings as human-readable */
+export function formatDuration(start: string, end: string): string {
+  const ms = new Date(end).getTime() - new Date(start).getTime()
+  if (ms < 0) return '0分钟'
+
+  const minutes = Math.floor(ms / 60000)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+
+  const remainHours = hours % 24
+  const remainMinutes = minutes % 60
+
+  const parts: string[] = []
+  if (days > 0) parts.push(`${days}天`)
+  if (remainHours > 0) parts.push(`${remainHours}小时`)
+  if (remainMinutes > 0 || parts.length === 0) parts.push(`${remainMinutes}分钟`)
+
+  return parts.join('')
+}

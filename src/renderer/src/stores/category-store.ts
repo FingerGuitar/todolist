@@ -5,6 +5,49 @@ import type {
   UpdateCategoryInput
 } from '@shared/types'
 
+// 树节点类型
+export interface CategoryTreeNode extends Category {
+  children: CategoryTreeNode[]
+}
+
+// 从扁平数组构建树
+export function buildCategoryTree(cats: Category[]): CategoryTreeNode[] {
+  const map = new Map<number, CategoryTreeNode>()
+  const roots: CategoryTreeNode[] = []
+
+  for (const cat of cats) {
+    map.set(cat.id, { ...cat, children: [] })
+  }
+
+  for (const cat of cats) {
+    const node = map.get(cat.id)!
+    if (cat.parentId !== null && map.has(cat.parentId)) {
+      map.get(cat.parentId)!.children.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+
+  return roots
+}
+
+// 收集某个分类及其所有后代的 ID（带 visited 防循环）
+export function getDescendantIds(cats: Category[], parentId: number): number[] {
+  const ids: number[] = []
+  const visited = new Set<number>()
+  function collect(pid: number): void {
+    for (const cat of cats) {
+      if (cat.parentId === pid && !visited.has(cat.id)) {
+        visited.add(cat.id)
+        ids.push(cat.id)
+        collect(cat.id)
+      }
+    }
+  }
+  collect(parentId)
+  return ids
+}
+
 export interface CategoryState {
   categories: Category[]
   loading: boolean
@@ -45,8 +88,9 @@ export const useCategoryStore = create<CategoryState>()((set) => ({
 
   deleteCategory: async (id) => {
     await window.api.categoryDelete(id)
-    set((s) => ({
-      categories: s.categories.filter((c) => c.id !== id)
-    }))
+    set((s) => {
+      const deletedIds = new Set([id, ...getDescendantIds(s.categories, id)])
+      return { categories: s.categories.filter((c) => !deletedIds.has(c.id)) }
+    })
   }
 }))

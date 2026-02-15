@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { MoreHorizontal, Flag, Pencil, Trash2, CalendarDays } from 'lucide-react'
 import { format, isToday, isTomorrow, isPast, differenceInDays, startOfDay } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
@@ -12,9 +12,20 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
-import { useTaskStore } from '@/stores'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog'
+import { useTaskStore, useSettingsStore } from '@/stores'
 import { STATUS } from '@shared/types'
 import type { TaskWithRelations } from '@shared/types'
+import { formatDuration } from '@shared/date-utils'
 
 const PRIORITY_COLORS: Record<number, string> = {
   0: 'border-l-transparent',
@@ -55,6 +66,9 @@ function formatDueDate(dueDate: string): { label: string; overdue: boolean } {
 export function TaskItem({ task, onEdit }: TaskItemProps) {
   const toggleComplete = useTaskStore((s) => s.toggleComplete)
   const deleteTask = useTaskStore((s) => s.deleteTask)
+  const showDuration = useSettingsStore((s) => s.settings.showTaskDuration)
+  const confirmBeforeDelete = useSettingsStore((s) => s.settings.confirmBeforeDelete)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
   const isCompleted = task.status === STATUS.COMPLETED
 
@@ -80,9 +94,14 @@ export function TaskItem({ task, onEdit }: TaskItemProps) {
         />
       </div>
 
-      {/* Priority flag */}
+      {/* Priority flag + label */}
       {task.priority > 0 && (
-        <Flag className={cn('h-3.5 w-3.5 shrink-0', PRIORITY_TEXT_COLORS[task.priority])} />
+        <div className="flex items-center gap-1 shrink-0">
+          <Flag className={cn('h-3.5 w-3.5', PRIORITY_TEXT_COLORS[task.priority])} />
+          <span className={cn('text-[10px] font-medium', PRIORITY_TEXT_COLORS[task.priority])}>
+            {PRIORITY_LABELS[task.priority]}
+          </span>
+        </div>
       )}
 
       {/* Main content */}
@@ -137,6 +156,13 @@ export function TaskItem({ task, onEdit }: TaskItemProps) {
         </span>
       )}
 
+      {/* Duration */}
+      {showDuration && task.startedAt && task.completedAt && (
+        <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
+          耗时 {formatDuration(task.startedAt, task.completedAt)}
+        </span>
+      )}
+
       {/* More menu */}
       <div onClick={(e) => e.stopPropagation()}>
         <DropdownMenu>
@@ -156,7 +182,13 @@ export function TaskItem({ task, onEdit }: TaskItemProps) {
             </DropdownMenuItem>
             <DropdownMenuItem
               className="text-destructive"
-              onClick={() => deleteTask(task.id)}
+              onClick={() => {
+                if (confirmBeforeDelete) {
+                  setDeleteConfirmOpen(true)
+                } else {
+                  deleteTask(task.id)
+                }
+              }}
             >
               <Trash2 className="h-4 w-4 mr-2" />
               删除
@@ -164,6 +196,27 @@ export function TaskItem({ task, onEdit }: TaskItemProps) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* 删除确认弹窗 */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除任务「{task.title}」吗？该操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteTask(task.id)}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

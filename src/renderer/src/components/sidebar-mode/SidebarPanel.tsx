@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, Maximize2, Inbox, CalendarDays, List, Flag } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useTaskStore, useFilterStore } from '@/stores'
 import { STATUS } from '@shared/types'
+import { formatLocalDate } from '@shared/date-utils'
 import type { ViewType } from '@/stores'
 
 const PRIORITY_COLORS: Record<number, string> = {
@@ -18,7 +19,7 @@ const PRIORITY_COLORS: Record<number, string> = {
 }
 
 const VIEW_TABS: { key: ViewType; label: string; icon: typeof Inbox }[] = [
-  { key: 'inbox', label: '收件箱', icon: Inbox },
+  { key: 'inbox', label: '待办', icon: Inbox },
   { key: 'today', label: '今天', icon: CalendarDays },
   { key: 'all', label: '全部', icon: List }
 ]
@@ -27,6 +28,7 @@ export function SidebarPanel() {
   const { tasks, fetchTasks, createTask, toggleComplete } = useTaskStore()
   const { currentView, setView, getFilter } = useFilterStore()
   const [newTitle, setNewTitle] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchTasks(getFilter())
@@ -34,9 +36,13 @@ export function SidebarPanel() {
 
   const handleAdd = useCallback(async () => {
     const title = newTitle.trim()
-    if (!title) return
-    await createTask({ title })
+    if (!title) {
+      inputRef.current?.focus()
+      return
+    }
+    await createTask({ title, dueDate: formatLocalDate() })
     setNewTitle('')
+    inputRef.current?.focus()
   }, [newTitle, createTask])
 
   const handleKeyDown = useCallback(
@@ -68,6 +74,7 @@ export function SidebarPanel() {
       {/* Quick add */}
       <div className="flex items-center gap-1.5 px-3 py-2 border-b">
         <Input
+          ref={inputRef}
           placeholder="添加任务..."
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
@@ -75,11 +82,11 @@ export function SidebarPanel() {
           className="h-8 text-sm"
         />
         <Button
+          type="button"
           variant="ghost"
           size="icon"
-          className="h-8 w-8 shrink-0"
+          className="h-8 w-8 shrink-0 cursor-pointer"
           onClick={handleAdd}
-          disabled={!newTitle.trim()}
         >
           <Plus className="h-4 w-4" />
         </Button>
