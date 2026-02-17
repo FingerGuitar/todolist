@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Search, Plus } from 'lucide-react'
+import { Search, Plus, Wand2, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,8 @@ import type { AppSettings } from '@shared/types'
 
 interface HeaderProps {
   onNewTask?: () => void
+  onAiCreate?: () => void
+  onOpenReport?: () => void
 }
 
 /** 视图类型到中文名称的映射 */
@@ -119,12 +121,13 @@ function getDailySlogan(style: Exclude<SloganStyle, 'off'>): string {
   return list[idx]
 }
 
-export function Header({ onNewTask }: HeaderProps) {
+export function Header({ onNewTask, onAiCreate, onOpenReport }: HeaderProps) {
   const { currentView, selectedCategoryId, selectedTagId, searchQuery, setSearch } =
     useFilterStore()
   const { categories } = useCategoryStore()
   const { tags } = useTagStore()
   const sloganStyle = useSettingsStore((s) => s.settings.sloganStyle)
+  const llmEnabled = useSettingsStore((s) => s.settings.llm.enabled)
 
   const viewTitle = useMemo(() => {
     if (currentView === 'category' && selectedCategoryId !== null) {
@@ -173,6 +176,30 @@ export function Header({ onNewTask }: HeaderProps) {
           <Plus className="h-4 w-4" />
           新建任务
         </Button>
+        {llmEnabled && (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="cursor-pointer"
+              onClick={() => onAiCreate?.()}
+            >
+              <Wand2 className="h-4 w-4" />
+              AI 创建
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="cursor-pointer"
+              onClick={() => onOpenReport?.()}
+            >
+              <FileText className="h-4 w-4" />
+              报告
+            </Button>
+          </>
+        )}
       </div>
     </header>
   )

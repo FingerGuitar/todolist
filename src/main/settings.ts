@@ -10,7 +10,17 @@ const DEFAULTS: AppSettings = {
   closeToTray: true,
   confirmBeforeDelete: true,
   autoPostponeOverdue: true,
-  sloganStyle: 'funny'
+  sloganStyle: 'funny',
+  llm: {
+    enabled: false,
+    provider: 'openai-compatible',
+    baseUrl: 'https://api.openai.com/v1',
+    apiKey: '',
+    model: 'gpt-4o-mini',
+    temperature: 0.3,
+    maxTokens: 2048,
+    timeoutMs: 30000
+  }
 }
 
 function getSettingsPath(): string {

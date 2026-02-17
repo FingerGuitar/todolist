@@ -3,6 +3,7 @@ import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { initDatabase, closeDatabase } from './database'
 import { registerIpcHandlers } from './ipc-handlers'
+import { registerLlmIpcHandlers } from './llm'
 import { loadSettings } from './settings'
 import { createTray, destroyTray, refreshTrayMenu } from './tray'
 import { startReminderScheduler, stopReminderScheduler } from './reminder'
@@ -134,6 +135,7 @@ app.isQuitting = false
 app.whenReady().then(() => {
   initDatabase()
   registerIpcHandlers()
+  registerLlmIpcHandlers()
 
   // 同步开机自启动状态
   const settings = loadSettings()

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
-import { CalendarIcon } from 'lucide-react'
+import { CalendarIcon, Sparkles, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -60,6 +60,8 @@ export function TaskForm({ open, onOpenChange, task, defaultCategoryId }: TaskFo
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
   const [dueDate, setDueDate] = useState<Date | undefined>()
   const [submitting, setSubmitting] = useState(false)
+  const [aiSuggesting, setAiSuggesting] = useState(false)
+  const llmEnabled = useSettingsStore((s) => s.settings.llm.enabled)
 
   // Load categories/tags if not yet loaded
   useEffect(() => {
@@ -94,6 +96,42 @@ export function TaskForm({ open, onOpenChange, task, defaultCategoryId }: TaskFo
       prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
     )
   }, [])
+
+  const handleAiSuggest = useCallback(async () => {
+    if (!title.trim() || aiSuggesting) return
+    setAiSuggesting(true)
+    try {
+      const result = await window.api.llmSuggestTags({
+        title: title.trim(),
+        description: description || undefined
+      })
+      if (result.success && result.data) {
+        if (result.data.categoryId !== null) {
+          setCategoryId(String(result.data.categoryId))
+        }
+        if (result.data.tagIds.length > 0) {
+          setSelectedTagIds(result.data.tagIds)
+        }
+        // Auto-create new tags if suggested
+        if (result.data.newTags.length > 0) {
+          for (const tagName of result.data.newTags) {
+            const existing = tags.find((t) => t.name === tagName)
+            if (!existing) {
+              const newTag = await window.api.tagCreate({ name: tagName })
+              if (newTag?.id) {
+                await fetchTags()
+                setSelectedTagIds((prev) => [...prev, newTag.id])
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // Silently fail - not critical
+    } finally {
+      setAiSuggesting(false)
+    }
+  }, [title, description, aiSuggesting, tags, fetchTags])
 
   const handleSubmit = async () => {
     if (!title.trim() || submitting) return
@@ -239,6 +277,25 @@ export function TaskForm({ open, onOpenChange, task, defaultCategoryId }: TaskFo
                 </PopoverContent>
               </Popover>
             </div>
+          )}
+
+          {/* AI 推荐按钮 */}
+          {llmEnabled && title.trim() && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={handleAiSuggest}
+              disabled={aiSuggesting}
+            >
+              {aiSuggesting ? (
+                <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3 w-3 mr-1.5" />
+              )}
+              {aiSuggesting ? 'AI 推荐中...' : 'AI 推荐分类和标签'}
+            </Button>
           )}
 
           {/* Due date */}

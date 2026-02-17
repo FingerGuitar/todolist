@@ -68,6 +68,19 @@ export interface TaskAttachment {
   createdAt: string
 }
 
+// ---- LLM Settings ----
+
+export interface LlmSettings {
+  enabled: boolean
+  provider: 'openai-compatible' | 'ollama'
+  baseUrl: string
+  apiKey: string
+  model: string
+  temperature: number
+  maxTokens: number
+  timeoutMs: number
+}
+
 // ---- App Settings ----
 
 export interface AppSettings {
@@ -79,6 +92,7 @@ export interface AppSettings {
   confirmBeforeDelete: boolean
   autoPostponeOverdue: boolean
   sloganStyle: 'off' | 'programmer' | 'motivational' | 'sarcastic' | 'literary' | 'funny'
+  llm: LlmSettings
 }
 
 // ---- IPC payload types ----
@@ -151,6 +165,100 @@ export interface ReorderInput {
   sortOrder: number
 }
 
+export interface BatchCompleteInput {
+  ids: number[]
+  complete: boolean // true=标记完成, false=标记未完成
+}
+
+// ---- LLM IPC types ----
+
+export interface LlmTestResult {
+  success: boolean
+  message: string
+  latencyMs?: number
+}
+
+export interface LlmParseTaskInput {
+  text: string
+}
+
+export interface LlmParseTaskResult {
+  success: boolean
+  data?: {
+    title: string
+    description: string
+    priority: Priority
+    categoryId: number | null
+    dueDate: string | null
+    tagIds: number[]
+  }
+  error?: string
+}
+
+export interface LlmDecomposeTaskInput {
+  taskId: number
+}
+
+export interface LlmDecomposeTaskResult {
+  success: boolean
+  data?: {
+    subtasks: { title: string; description: string; priority: Priority }[]
+  }
+  error?: string
+}
+
+export interface LlmGenerateReportInput {
+  type: 'daily' | 'weekly'
+  date?: string
+}
+
+export interface LlmGenerateReportResult {
+  success: boolean
+  data?: {
+    title: string
+    summary: string
+    sections: { category: string; items: string[] }[]
+    highlights: string[]
+    nextPlan: string[]
+    markdown: string
+  }
+  error?: string
+}
+
+export interface LlmBatchParseTasksInput {
+  text: string
+}
+
+export interface LlmBatchParseTasksResult {
+  success: boolean
+  data?: {
+    tasks: {
+      title: string
+      description: string
+      priority: Priority
+      categoryId: number | null
+      dueDate: string | null
+      tagIds: number[]
+    }[]
+  }
+  error?: string
+}
+
+export interface LlmSuggestTagsInput {
+  title: string
+  description?: string
+}
+
+export interface LlmSuggestTagsResult {
+  success: boolean
+  data?: {
+    categoryId: number | null
+    tagIds: number[]
+    newTags: string[]
+  }
+  error?: string
+}
+
 // ---- IPC Channel names ----
 
 export const IPC_CHANNELS = {
@@ -162,6 +270,8 @@ export const IPC_CHANNELS = {
   TASK_DELETE: 'task:delete',
   TASK_REORDER: 'task:reorder',
   TASK_TOGGLE_COMPLETE: 'task:toggle-complete',
+  TASK_BATCH_COMPLETE: 'task:batch-complete',
+  TASK_BATCH_DELETE: 'task:batch-delete',
   // Categories
   CATEGORY_LIST: 'category:list',
   CATEGORY_CREATE: 'category:create',
@@ -192,5 +302,12 @@ export const IPC_CHANNELS = {
   SIDEBAR_TOGGLE: 'sidebar:toggle',
   SIDEBAR_EXPAND: 'sidebar:expand',
   SIDEBAR_COLLAPSE: 'sidebar:collapse',
-  SIDEBAR_SHOW_MAIN: 'sidebar:show-main'
+  SIDEBAR_SHOW_MAIN: 'sidebar:show-main',
+  // LLM
+  LLM_TEST: 'llm:test',
+  LLM_PARSE_TASK: 'llm:parse-task',
+  LLM_DECOMPOSE_TASK: 'llm:decompose-task',
+  LLM_GENERATE_REPORT: 'llm:generate-report',
+  LLM_SUGGEST_TAGS: 'llm:suggest-tags',
+  LLM_BATCH_PARSE_TASKS: 'llm:batch-parse-tasks'
 } as const

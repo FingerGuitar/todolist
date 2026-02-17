@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { MoreHorizontal, Flag, Pencil, Trash2, CalendarDays } from 'lucide-react'
+import { MoreHorizontal, Flag, Pencil, Trash2, CalendarDays, GitBranch } from 'lucide-react'
 import { format, isToday, isTomorrow, isPast, differenceInDays, startOfDay } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -46,6 +46,10 @@ const PRIORITY_TEXT_COLORS: Record<number, string> = {
 interface TaskItemProps {
   task: TaskWithRelations
   onEdit: (task: TaskWithRelations) => void
+  onDecompose?: (task: TaskWithRelations) => void
+  selectionMode?: boolean
+  selected?: boolean
+  onToggleSelect?: (id: number) => void
 }
 
 function formatDueDate(dueDate: string): { label: string; overdue: boolean } {
@@ -63,11 +67,12 @@ function formatDueDate(dueDate: string): { label: string; overdue: boolean } {
   return { label: format(due, 'M月d日', { locale: zhCN }), overdue: false }
 }
 
-export function TaskItem({ task, onEdit }: TaskItemProps) {
+export function TaskItem({ task, onEdit, onDecompose, selectionMode, selected, onToggleSelect }: TaskItemProps) {
   const toggleComplete = useTaskStore((s) => s.toggleComplete)
   const deleteTask = useTaskStore((s) => s.deleteTask)
   const showDuration = useSettingsStore((s) => s.settings.showTaskDuration)
   const confirmBeforeDelete = useSettingsStore((s) => s.settings.confirmBeforeDelete)
+  const llmEnabled = useSettingsStore((s) => s.settings.llm.enabled)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
   const isCompleted = task.status === STATUS.COMPLETED
@@ -86,12 +91,19 @@ export function TaskItem({ task, onEdit }: TaskItemProps) {
       )}
       onClick={() => onEdit(task)}
     >
-      {/* Checkbox */}
+      {/* Checkbox: selection mode → select checkbox; normal → complete checkbox */}
       <div onClick={(e) => e.stopPropagation()}>
-        <Checkbox
-          checked={isCompleted}
-          onCheckedChange={() => toggleComplete(task.id)}
-        />
+        {selectionMode && onToggleSelect ? (
+          <Checkbox
+            checked={selected ?? false}
+            onCheckedChange={() => onToggleSelect(task.id)}
+          />
+        ) : (
+          <Checkbox
+            checked={isCompleted}
+            onCheckedChange={() => toggleComplete(task.id)}
+          />
+        )}
       </div>
 
       {/* Priority flag + label */}
@@ -180,6 +192,12 @@ export function TaskItem({ task, onEdit }: TaskItemProps) {
               <Pencil className="h-4 w-4 mr-2" />
               编辑
             </DropdownMenuItem>
+            {llmEnabled && onDecompose && (
+              <DropdownMenuItem onClick={() => onDecompose(task)}>
+                <GitBranch className="h-4 w-4 mr-2" />
+                AI 拆解子任务
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               className="text-destructive"
               onClick={() => {

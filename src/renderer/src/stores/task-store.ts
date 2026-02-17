@@ -18,6 +18,8 @@ export interface TaskState {
   deleteTask: (id: number) => Promise<void>
   toggleComplete: (id: number) => Promise<void>
   reorderTasks: (items: ReorderInput[]) => Promise<void>
+  batchComplete: (ids: number[], complete: boolean) => Promise<void>
+  batchDelete: (ids: number[]) => Promise<void>
 }
 
 export const useTaskStore = create<TaskState>()((set, get) => ({
@@ -84,6 +86,34 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
           tasks: s.tasks.map((t) => (t.id === updated.id ? updated : t))
         }))
       }
+    } catch (e) {
+      set({ error: (e as Error).message })
+    }
+  },
+
+  batchComplete: async (ids, complete) => {
+    set({ error: null })
+    try {
+      const updated = await window.api.taskBatchComplete({ ids, complete })
+      set((s) => ({
+        tasks: s.tasks.map((t) => {
+          const match = updated.find((u) => u.id === t.id)
+          return match ?? t
+        })
+      }))
+    } catch (e) {
+      set({ error: (e as Error).message })
+    }
+  },
+
+  batchDelete: async (ids) => {
+    set({ error: null })
+    try {
+      await window.api.taskBatchDelete(ids)
+      const idSet = new Set(ids)
+      set((s) => ({
+        tasks: s.tasks.filter((t) => !idSet.has(t.id))
+      }))
     } catch (e) {
       set({ error: (e as Error).message })
     }

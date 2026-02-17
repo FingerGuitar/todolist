@@ -1,6 +1,17 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
-import { Loader2, Inbox, CalendarCheck, ListChecks, Plus } from 'lucide-react'
+import { Loader2, Inbox, CalendarCheck, ListChecks, Plus, X, CheckSquare, Trash2 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog'
 import { useTaskStore, useFilterStore } from '@/stores'
 import type { ViewType } from '@/stores'
 import type { TaskWithRelations } from '@shared/types'
@@ -28,10 +39,11 @@ const EMPTY_STATE: Record<ViewType, { icon: typeof Inbox; text: string; desc: st
 
 interface TaskListProps {
   onEditTask: (task: TaskWithRelations) => void
+  onDecomposeTask?: (task: TaskWithRelations) => void
 }
 
-export function TaskList({ onEditTask }: TaskListProps) {
-  const { tasks, loading, fetchTasks, createTask } = useTaskStore()
+export function TaskList({ onEditTask, onDecomposeTask }: TaskListProps) {
+  const { tasks, loading, fetchTasks, createTask, batchComplete, batchDelete } = useTaskStore()
   const {
     currentView, searchQuery, selectedCategoryId, selectedTagId,
     sortBy, sortOrder, getFilter
@@ -40,6 +52,35 @@ export function TaskList({ onEditTask }: TaskListProps) {
   const [quickTitle, setQuickTitle] = useState('')
   const [quickAdding, setQuickAdding] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Batch selection state
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [batchDeleteConfirmOpen, setBatchDeleteConfirmOpen] = useState(false)
+
+  const toggleSelect = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const selectAll = useCallback(() => {
+    setSelectedIds(new Set(tasks.map((t) => t.id)))
+  }, [tasks])
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set())
+    setSelectionMode(false)
+  }, [])
+
+  // Clear selection on view/filter change
+  useEffect(() => {
+    setSelectedIds(new Set())
+    setSelectionMode(false)
+  }, [currentView, searchQuery, selectedCategoryId, selectedTagId, sortBy, sortOrder])
 
   useEffect(() => {
     fetchTasks(getFilter())
@@ -90,6 +131,44 @@ export function TaskList({ onEditTask }: TaskListProps) {
     }
   }, [quickTitle, quickAdding, currentView, selectedCategoryId, createTask])
 
+  const handleBatchComplete = useCallback(async () => {
+    const ids = Array.from(selectedIds)
+    await batchComplete(ids, true)
+    setSelectedIds(new Set())
+    setSelectionMode(false)
+  }, [selectedIds, batchComplete])
+
+  const handleBatchDelete = useCallback(async () => {
+    const ids = Array.from(selectedIds)
+    await batchDelete(ids)
+    setSelectedIds(new Set())
+    setSelectionMode(false)
+    setBatchDeleteConfirmOpen(false)
+  }, [selectedIds, batchDelete])
+
+  const batchBar = selectionMode ? (
+    <div className="flex items-center gap-2 pb-3 mb-1 border-b border-border/50">
+      <span className="text-sm text-muted-foreground whitespace-nowrap">
+        已选择 {selectedIds.size} 项
+      </span>
+      <div className="flex-1" />
+      <Button variant="outline" size="sm" onClick={selectAll}>
+        全选
+      </Button>
+      <Button variant="outline" size="sm" onClick={handleBatchComplete}>
+        <CheckSquare className="h-3.5 w-3.5 mr-1" />
+        完成
+      </Button>
+      <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setBatchDeleteConfirmOpen(true)}>
+        <Trash2 className="h-3.5 w-3.5 mr-1" />
+        删除
+      </Button>
+      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={clearSelection}>
+        <X className="h-4 w-4" />
+      </Button>
+    </div>
+  ) : null
+
   const quickAddBar = (
     <div className="flex items-center gap-2 pb-3 mb-1 border-b border-border/50">
       <Plus className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -108,6 +187,15 @@ export function TaskList({ onEditTask }: TaskListProps) {
         disabled={quickAdding}
         className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
       />
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 shrink-0 text-muted-foreground"
+        title="批量选择"
+        onClick={() => setSelectionMode(true)}
+      >
+        <CheckSquare className="h-4 w-4" />
+      </Button>
     </div>
   )
 
@@ -137,40 +225,71 @@ export function TaskList({ onEditTask }: TaskListProps) {
     )
   }
 
+  const renderTaskItem = (task: TaskWithRelations) => (
+    <TaskItem
+      key={task.id}
+      task={task}
+      onEdit={onEditTask}
+      onDecompose={onDecomposeTask}
+      selectionMode={selectionMode}
+      selected={selectedIds.has(task.id)}
+      onToggleSelect={toggleSelect}
+    />
+  )
+
   return (
-    <ScrollArea className="h-full">
-      {quickAddBar}
-      {groupedTasks ? (
-        <div className="space-y-4">
-          {groupedTasks.map((group) => (
-            <div key={group.categoryId ?? 'uncategorized'}>
-              <div className="flex items-center gap-2 px-1 pb-1.5">
-                <span
-                  className="h-2.5 w-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: group.categoryColor }}
-                />
-                <span className="text-xs font-medium text-muted-foreground">
-                  {group.categoryName}
-                </span>
-                <span className="text-[10px] text-muted-foreground/60">
-                  {group.tasks.length}
-                </span>
+    <>
+      <ScrollArea className="h-full">
+        {batchBar ?? quickAddBar}
+        {groupedTasks ? (
+          <div className="space-y-4">
+            {groupedTasks.map((group) => (
+              <div key={group.categoryId ?? 'uncategorized'}>
+                <div className="flex items-center gap-2 px-1 pb-1.5">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: group.categoryColor }}
+                  />
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {group.categoryName}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground/60">
+                    {group.tasks.length}
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {group.tasks.map(renderTaskItem)}
+                </div>
               </div>
-              <div className="space-y-1">
-                {group.tasks.map((task) => (
-                  <TaskItem key={task.id} task={task} onEdit={onEditTask} />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-1">
-          {tasks.map((task) => (
-            <TaskItem key={task.id} task={task} onEdit={onEditTask} />
-          ))}
-        </div>
-      )}
-    </ScrollArea>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {tasks.map(renderTaskItem)}
+          </div>
+        )}
+      </ScrollArea>
+
+      {/* Batch delete confirmation */}
+      <AlertDialog open={batchDeleteConfirmOpen} onOpenChange={setBatchDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认批量删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除选中的 {selectedIds.size} 个任务吗？该操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleBatchDelete}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

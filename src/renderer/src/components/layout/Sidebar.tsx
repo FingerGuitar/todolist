@@ -15,6 +15,7 @@ import {
   ChevronDown,
   MoreHorizontal,
   FolderPlus,
+  FolderClock,
   ListPlus,
   Pencil,
   Trash2
@@ -120,7 +121,8 @@ function CategoryTreeItem({
   onAddChild,
   onEditCategory,
   onDeleteCategory,
-  onNewTask
+  onNewTask,
+  onQuickCreateFolder
 }: {
   node: CategoryTreeNode
   depth: number
@@ -133,6 +135,7 @@ function CategoryTreeItem({
   onEditCategory: (id: number) => void
   onDeleteCategory: (id: number, name: string, hasChildren: boolean) => void
   onNewTask: (categoryId: number) => void
+  onQuickCreateFolder: (categoryId: number) => void
 }) {
   const isActive = currentView === 'category' && selectedCategoryId === node.id
   const hasChildren = node.children.length > 0
@@ -212,6 +215,13 @@ function CategoryTreeItem({
               <FolderPlus className="h-3.5 w-3.5" />
               新建子分类
             </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer gap-2"
+              onClick={() => onQuickCreateFolder(node.id)}
+            >
+              <FolderClock className="h-3.5 w-3.5" />
+              快速创建日期文件夹
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="cursor-pointer gap-2"
@@ -248,6 +258,7 @@ function CategoryTreeItem({
               onEditCategory={onEditCategory}
               onDeleteCategory={onDeleteCategory}
               onNewTask={onNewTask}
+              onQuickCreateFolder={onQuickCreateFolder}
             />
           ))}
         </div>
@@ -259,7 +270,7 @@ function CategoryTreeItem({
 export function Sidebar({ onAddCategory, onEditCategory, onAddTag, onNewTask, onOpenSettings }: SidebarProps) {
   const { currentView, selectedCategoryId, selectedTagId, setView, setCategory, setTag } =
     useFilterStore()
-  const { categories, fetchCategories, deleteCategory } = useCategoryStore()
+  const { categories, fetchCategories, createCategory, deleteCategory } = useCategoryStore()
   const { tags, fetchTags } = useTagStore()
 
   // 折叠/展开状态
@@ -325,6 +336,86 @@ export function Sidebar({ onAddCategory, onEditCategory, onAddTag, onNewTask, on
     onNewTask?.(categoryId)
   }, [onNewTask])
 
+  const handleQuickCreateFolder = useCallback(async (categoryId: number) => {
+    const now = new Date()
+    const year = String(now.getFullYear())
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const weekOfMonth = Math.ceil(now.getDate() / 7)
+    const weekLabel = `w${weekOfMonth}`
+
+    // 识别当前节点在日期层级中的位置
+    const cats = useCategoryStore.getState().categories
+    const clicked = cats.find((c) => c.id === categoryId)
+    const clickedName = clicked?.name || ''
+
+    let level: 'none' | 'year' | 'month' | 'week' = 'none'
+    if (/^w\d+$/.test(clickedName)) level = 'week'
+    else if (/^(0[1-9]|1[0-2])$/.test(clickedName)) level = 'month'
+    else if (/^\d{4}$/.test(clickedName)) level = 'year'
+
+    const expandIds: number[] = []
+
+    if (level === 'week') {
+      // 已经是周文件夹，在同级（父=月文件夹）下创建当前周
+      const monthParentId = clicked!.parentId!
+      expandIds.push(monthParentId)
+      let curCats = useCategoryStore.getState().categories
+      let weekCat = curCats.find((c) => c.parentId === monthParentId && c.name === weekLabel)
+      if (!weekCat) {
+        await createCategory({ name: weekLabel, parentId: monthParentId })
+      }
+    } else if (level === 'month') {
+      // 月文件夹，直接在下面创建周
+      expandIds.push(categoryId)
+      let curCats = useCategoryStore.getState().categories
+      let weekCat = curCats.find((c) => c.parentId === categoryId && c.name === weekLabel)
+      if (!weekCat) {
+        await createCategory({ name: weekLabel, parentId: categoryId })
+      }
+    } else if (level === 'year') {
+      // 年文件夹，创建月+周
+      expandIds.push(categoryId)
+      let curCats = useCategoryStore.getState().categories
+      let monthCat = curCats.find((c) => c.parentId === categoryId && c.name === month)
+      if (!monthCat) {
+        monthCat = await createCategory({ name: month, parentId: categoryId })
+      }
+      expandIds.push(monthCat!.id)
+      curCats = useCategoryStore.getState().categories
+      let weekCat = curCats.find((c) => c.parentId === monthCat!.id && c.name === weekLabel)
+      if (!weekCat) {
+        await createCategory({ name: weekLabel, parentId: monthCat!.id })
+      }
+    } else {
+      // 普通分类，创建完整的 年/月/周
+      expandIds.push(categoryId)
+      let curCats = useCategoryStore.getState().categories
+      let yearCat = curCats.find((c) => c.parentId === categoryId && c.name === year)
+      if (!yearCat) {
+        yearCat = await createCategory({ name: year, parentId: categoryId })
+      }
+      expandIds.push(yearCat!.id)
+      curCats = useCategoryStore.getState().categories
+      let monthCat = curCats.find((c) => c.parentId === yearCat!.id && c.name === month)
+      if (!monthCat) {
+        monthCat = await createCategory({ name: month, parentId: yearCat!.id })
+      }
+      expandIds.push(monthCat!.id)
+      curCats = useCategoryStore.getState().categories
+      let weekCat = curCats.find((c) => c.parentId === monthCat!.id && c.name === weekLabel)
+      if (!weekCat) {
+        await createCategory({ name: weekLabel, parentId: monthCat!.id })
+      }
+    }
+
+    // 展开路径上所有节点
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of expandIds) next.add(id)
+      return next
+    })
+  }, [createCategory])
+
   return (
     <aside className="flex flex-col w-[260px] bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
       {/* Logo */}
@@ -379,6 +470,7 @@ export function Sidebar({ onAddCategory, onEditCategory, onAddTag, onNewTask, on
                 onEditCategory={handleEditCategory}
                 onDeleteCategory={handleDeleteCategory}
                 onNewTask={handleNewTaskInCategory}
+                onQuickCreateFolder={handleQuickCreateFolder}
               />
             ))}
           </nav>

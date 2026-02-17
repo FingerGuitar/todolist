@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -10,8 +11,10 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { useThemeStore, useSettingsStore } from '@/stores'
 import { themeCategories } from '@/themes'
+import type { LlmSettings } from '@shared/types'
 
 interface SettingsDialogProps {
   open: boolean
@@ -42,9 +45,36 @@ function SettingRow({
   )
 }
 
+const LLM_PRESETS: { label: string; baseUrl: string; provider: LlmSettings['provider']; model: string }[] = [
+  { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', provider: 'openai-compatible', model: 'gpt-4o-mini' },
+  { label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', provider: 'openai-compatible', model: 'deepseek-chat' },
+  { label: '通义千问', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', provider: 'openai-compatible', model: 'qwen-turbo' },
+  { label: 'Ollama', baseUrl: 'http://localhost:11434/v1', provider: 'ollama', model: 'qwen2.5' }
+]
+
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { currentTheme, customColor, setTheme, setCustomColor } = useThemeStore()
   const { settings, updateSettings } = useSettingsStore()
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [testing, setTesting] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+
+  const updateLlm = (partial: Partial<LlmSettings>) => {
+    updateSettings({ llm: { ...settings.llm, ...partial } })
+  }
+
+  const handleTestConnection = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const result = await window.api.llmTest()
+      setTestResult(result)
+    } catch {
+      setTestResult({ success: false, message: '测试请求失败' })
+    } finally {
+      setTesting(false)
+    }
+  }
 
   const handleThemeChange = async (themeName: string) => {
     await setTheme(themeName)
@@ -227,6 +257,169 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 checked={settings.autoPostponeOverdue}
                 onCheckedChange={(checked) => updateSettings({ autoPostponeOverdue: checked })}
               />
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* AI 智能助手 */}
+          <div>
+            <h3 className="text-sm font-medium mb-3">AI 智能助手</h3>
+            <div className="space-y-4">
+              <SettingRow
+                id="llm-enabled"
+                label="启用 AI 功能"
+                description="接入大语言模型，支持智能创建、任务拆解、报告生成等"
+                checked={settings.llm.enabled}
+                onCheckedChange={(checked) => updateLlm({ enabled: checked })}
+              />
+
+              {settings.llm.enabled && (
+                <div className="space-y-3 pl-1">
+                  {/* 服务商预设 */}
+                  <div>
+                    <span className="text-xs text-muted-foreground">服务商预设</span>
+                    <div className="grid grid-cols-4 gap-2 mt-1.5">
+                      {LLM_PRESETS.map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() =>
+                            updateLlm({
+                              baseUrl: preset.baseUrl,
+                              provider: preset.provider,
+                              model: preset.model
+                            })
+                          }
+                          className={cn(
+                            'rounded-md border px-2 py-1.5 text-xs transition-colors cursor-pointer',
+                            'hover:border-primary/50',
+                            settings.llm.baseUrl === preset.baseUrl
+                              ? 'border-primary bg-primary/5 font-medium'
+                              : 'border-border'
+                          )}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* API 地址 */}
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="llm-base-url" className="text-xs">API 地址</Label>
+                    <Input
+                      id="llm-base-url"
+                      placeholder="https://api.openai.com/v1"
+                      value={settings.llm.baseUrl}
+                      onChange={(e) => updateLlm({ baseUrl: e.target.value })}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+
+                  {/* API 密钥 */}
+                  {settings.llm.provider !== 'ollama' && (
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="llm-api-key" className="text-xs">API 密钥</Label>
+                      <Input
+                        id="llm-api-key"
+                        type="password"
+                        placeholder="sk-..."
+                        value={settings.llm.apiKey}
+                        onChange={(e) => updateLlm({ apiKey: e.target.value })}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  )}
+
+                  {/* 模型名称 */}
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="llm-model" className="text-xs">模型名称</Label>
+                    <Input
+                      id="llm-model"
+                      placeholder="gpt-4o-mini"
+                      value={settings.llm.model}
+                      onChange={(e) => updateLlm({ model: e.target.value })}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+
+                  {/* 测试连接 */}
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={handleTestConnection}
+                      disabled={testing}
+                    >
+                      {testing ? '测试中...' : '测试连接'}
+                    </Button>
+                    {testResult && (
+                      <span
+                        className={cn(
+                          'text-xs',
+                          testResult.success ? 'text-green-500' : 'text-red-500'
+                        )}
+                      >
+                        {testResult.message}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 高级设置 */}
+                  <div>
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                      onClick={() => setShowAdvanced(!showAdvanced)}
+                    >
+                      {showAdvanced ? '收起' : '展开'}高级设置
+                    </button>
+                    {showAdvanced && (
+                      <div className="space-y-3 mt-2">
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="llm-temperature" className="text-xs">
+                            温度（{settings.llm.temperature}）
+                          </Label>
+                          <input
+                            id="llm-temperature"
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value={settings.llm.temperature}
+                            onChange={(e) => updateLlm({ temperature: parseFloat(e.target.value) })}
+                            className="w-full h-1.5 accent-primary"
+                          />
+                        </div>
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="llm-max-tokens" className="text-xs">最大 Token</Label>
+                          <Input
+                            id="llm-max-tokens"
+                            type="number"
+                            value={settings.llm.maxTokens}
+                            onChange={(e) => updateLlm({ maxTokens: parseInt(e.target.value) || 2048 })}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="llm-timeout" className="text-xs">超时时间（秒）</Label>
+                          <Input
+                            id="llm-timeout"
+                            type="number"
+                            value={Math.round(settings.llm.timeoutMs / 1000)}
+                            onChange={(e) =>
+                              updateLlm({ timeoutMs: (parseInt(e.target.value) || 30) * 1000 })
+                            }
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

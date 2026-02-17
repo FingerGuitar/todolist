@@ -11,6 +11,8 @@ const api = {
   taskDelete: (id: number) => ipcRenderer.invoke('task:delete', id),
   taskReorder: (items: unknown) => ipcRenderer.invoke('task:reorder', items),
   taskToggleComplete: (id: number) => ipcRenderer.invoke('task:toggle-complete', id),
+  taskBatchComplete: (input: unknown) => ipcRenderer.invoke('task:batch-complete', input),
+  taskBatchDelete: (ids: number[]) => ipcRenderer.invoke('task:batch-delete', ids),
 
   // Categories
   categoryList: () => ipcRenderer.invoke('category:list'),
@@ -48,7 +50,15 @@ const api = {
   sidebarToggle: () => ipcRenderer.invoke('sidebar:toggle'),
   sidebarExpand: () => ipcRenderer.invoke('sidebar:expand'),
   sidebarCollapse: () => ipcRenderer.invoke('sidebar:collapse'),
-  sidebarShowMain: () => ipcRenderer.invoke('sidebar:show-main')
+  sidebarShowMain: () => ipcRenderer.invoke('sidebar:show-main'),
+
+  // LLM
+  llmTest: () => ipcRenderer.invoke('llm:test'),
+  llmParseTask: (input: unknown) => ipcRenderer.invoke('llm:parse-task', input),
+  llmDecomposeTask: (input: unknown) => ipcRenderer.invoke('llm:decompose-task', input),
+  llmGenerateReport: (input: unknown) => ipcRenderer.invoke('llm:generate-report', input),
+  llmSuggestTags: (input: unknown) => ipcRenderer.invoke('llm:suggest-tags', input),
+  llmBatchParseTasks: (input: unknown) => ipcRenderer.invoke('llm:batch-parse-tasks', input)
 }
 
 export type ElectronAPI = typeof api

@@ -18,6 +18,7 @@ import type {
   CreateTagInput,
   UpdateTagInput,
   ReorderInput,
+  BatchCompleteInput,
   TaskWithRelations,
   Task,
   Category,
@@ -286,6 +287,38 @@ export function registerIpcHandlers(): void {
       .run()
     const updated = db.select().from(tasks).where(eq(tasks.id, id)).get() as Task
     return enrichTask(updated)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.TASK_BATCH_COMPLETE, (_e, input: BatchCompleteInput) => {
+    const { ids, complete } = input
+    if (ids.length === 0) return []
+    const status = complete ? STATUS.COMPLETED : STATUS.TODO
+    const completedAt = complete ? now() : null
+    db.update(tasks)
+      .set({ status, completedAt, updatedAt: now() })
+      .where(inArray(tasks.id, ids))
+      .run()
+    const rows = db.select().from(tasks).where(inArray(tasks.id, ids)).all() as Task[]
+    return rows.map(enrichTask)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.TASK_BATCH_DELETE, (_e, ids: number[]) => {
+    if (ids.length === 0) return { success: true, count: 0 }
+    // Clean up attachment files
+    const attachments = db
+      .select()
+      .from(taskAttachments)
+      .where(inArray(taskAttachments.taskId, ids))
+      .all() as TaskAttachment[]
+    const attachDir = getAttachmentsDir()
+    for (const att of attachments) {
+      const filePath = join(attachDir, att.filename)
+      if (existsSync(filePath)) {
+        unlinkSync(filePath)
+      }
+    }
+    db.delete(tasks).where(inArray(tasks.id, ids)).run()
+    return { success: true, count: ids.length }
   })
 
   // ---- Categories ----

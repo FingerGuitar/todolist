@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { AppLayout } from '@/components/layout'
-import { TaskList, TaskForm } from '@/components/task'
+import { TaskList, TaskForm, AiCreateDialog, TaskDecomposeDialog } from '@/components/task'
 import { CategoryForm } from '@/components/category'
 import { TagForm } from '@/components/tag'
 import { SidebarMode } from '@/components/sidebar-mode'
 import { useThemeStore, useSettingsStore, useCategoryStore } from '@/stores'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
+import { ReportDialog } from '@/components/report/ReportDialog'
 import type { TaskWithRelations, Category } from '@shared/types'
 
 const isSidebarMode = new URLSearchParams(window.location.search).get('mode') === 'sidebar'
@@ -31,6 +32,9 @@ function MainApp() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
   const [parentCategoryId, setParentCategoryId] = useState<number | undefined>(undefined)
   const [tagFormOpen, setTagFormOpen] = useState(false)
+  const [aiCreateOpen, setAiCreateOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
+  const [decomposeTask, setDecomposeTask] = useState<TaskWithRelations | null>(null)
 
   useEffect(() => {
     loadTheme()
@@ -76,8 +80,10 @@ function MainApp() {
         setCategoryFormOpen(true)
       }}
       onAddTag={() => setTagFormOpen(true)}
+      onAiCreate={() => setAiCreateOpen(true)}
+      onOpenReport={() => setReportOpen(true)}
     >
-      <TaskList onEditTask={handleEditTask} />
+      <TaskList onEditTask={handleEditTask} onDecomposeTask={setDecomposeTask} />
 
       <TaskForm
         open={taskFormOpen}
@@ -108,6 +114,16 @@ function MainApp() {
       />
 
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+
+      <AiCreateDialog open={aiCreateOpen} onOpenChange={setAiCreateOpen} />
+
+      <TaskDecomposeDialog
+        open={!!decomposeTask}
+        onOpenChange={(open) => { if (!open) setDecomposeTask(null) }}
+        task={decomposeTask}
+      />
+
+      <ReportDialog open={reportOpen} onOpenChange={setReportOpen} />
     </AppLayout>
   )
 }

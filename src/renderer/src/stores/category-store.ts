@@ -56,6 +56,8 @@ export interface CategoryState {
   createCategory: (input: CreateCategoryInput) => Promise<Category>
   updateCategory: (input: UpdateCategoryInput) => Promise<Category>
   deleteCategory: (id: number) => Promise<void>
+  /** 在指定分类下创建 年/月/w周 日期文件夹，返回周文件夹的 id */
+  createDateFolder: (parentCategoryId: number) => Promise<number>
 }
 
 export const useCategoryStore = create<CategoryState>()((set) => ({
@@ -92,5 +94,38 @@ export const useCategoryStore = create<CategoryState>()((set) => ({
       const deletedIds = new Set([id, ...getDescendantIds(s.categories, id)])
       return { categories: s.categories.filter((c) => !deletedIds.has(c.id)) }
     })
+  },
+
+  createDateFolder: async (parentCategoryId) => {
+    const now = new Date()
+    const year = String(now.getFullYear())
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const weekOfMonth = Math.ceil(now.getDate() / 7)
+    const weekLabel = `w${weekOfMonth}`
+
+    const { createCategory } = useCategoryStore.getState()
+
+    // 查找或创建 年
+    let cats = useCategoryStore.getState().categories
+    let yearCat = cats.find((c) => c.parentId === parentCategoryId && c.name === year)
+    if (!yearCat) {
+      yearCat = await createCategory({ name: year, parentId: parentCategoryId })
+    }
+
+    // 查找或创建 月
+    cats = useCategoryStore.getState().categories
+    let monthCat = cats.find((c) => c.parentId === yearCat!.id && c.name === month)
+    if (!monthCat) {
+      monthCat = await createCategory({ name: month, parentId: yearCat!.id })
+    }
+
+    // 查找或创建 周
+    cats = useCategoryStore.getState().categories
+    let weekCat = cats.find((c) => c.parentId === monthCat!.id && c.name === weekLabel)
+    if (!weekCat) {
+      weekCat = await createCategory({ name: weekLabel, parentId: monthCat!.id })
+    }
+
+    return weekCat!.id
   }
 }))

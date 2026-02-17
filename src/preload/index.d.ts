@@ -4,6 +4,7 @@ import type {
   CreateTaskInput,
   UpdateTaskInput,
   ReorderInput,
+  BatchCompleteInput,
   Category,
   CreateCategoryInput,
   UpdateCategoryInput,
@@ -11,7 +12,18 @@ import type {
   CreateTagInput,
   UpdateTagInput,
   TaskAttachment,
-  AppSettings
+  AppSettings,
+  LlmTestResult,
+  LlmParseTaskInput,
+  LlmParseTaskResult,
+  LlmDecomposeTaskInput,
+  LlmDecomposeTaskResult,
+  LlmGenerateReportInput,
+  LlmGenerateReportResult,
+  LlmSuggestTagsInput,
+  LlmSuggestTagsResult,
+  LlmBatchParseTasksInput,
+  LlmBatchParseTasksResult
 } from '../shared/types'
 
 export interface ElectronAPI {
@@ -25,6 +37,8 @@ export interface ElectronAPI {
   taskDelete(id: number): Promise<{ success: boolean }>
   taskReorder(items: ReorderInput[]): Promise<{ success: boolean }>
   taskToggleComplete(id: number): Promise<TaskWithRelations | null>
+  taskBatchComplete(input: BatchCompleteInput): Promise<TaskWithRelations[]>
+  taskBatchDelete(ids: number[]): Promise<{ success: boolean; count: number }>
 
   // Categories
   categoryList(): Promise<Category[]>
@@ -63,6 +77,14 @@ export interface ElectronAPI {
   sidebarExpand(): Promise<void>
   sidebarCollapse(): Promise<void>
   sidebarShowMain(): Promise<void>
+
+  // LLM
+  llmTest(): Promise<LlmTestResult>
+  llmParseTask(input: LlmParseTaskInput): Promise<LlmParseTaskResult>
+  llmDecomposeTask(input: LlmDecomposeTaskInput): Promise<LlmDecomposeTaskResult>
+  llmGenerateReport(input: LlmGenerateReportInput): Promise<LlmGenerateReportResult>
+  llmSuggestTags(input: LlmSuggestTagsInput): Promise<LlmSuggestTagsResult>
+  llmBatchParseTasks(input: LlmBatchParseTasksInput): Promise<LlmBatchParseTasksResult>
 }
 
 declare global {
