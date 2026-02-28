@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { SidebarCollapsed } from './SidebarCollapsed'
 import { SidebarPanel } from './SidebarPanel'
 import { useThemeStore } from '@/stores'
+import { useDataSync } from '@/hooks/useDataSync'
 
 type DockEdge = 'top' | 'left' | 'right'
 
@@ -15,6 +16,7 @@ function getEdgeFromURL(): DockEdge {
 
 export function SidebarMode() {
   const loadTheme = useThemeStore((s) => s.loadTheme)
+  useDataSync()
   const edge = useMemo(getEdgeFromURL, [])
   const [expanded, setExpanded] = useState(false)
   const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)

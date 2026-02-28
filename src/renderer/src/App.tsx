@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
+import { Toaster } from 'sonner'
 import { AppLayout } from '@/components/layout'
 import { TaskList, TaskForm, AiCreateDialog, TaskDecomposeDialog } from '@/components/task'
 import { CategoryForm } from '@/components/category'
 import { TagForm } from '@/components/tag'
 import { SidebarMode } from '@/components/sidebar-mode'
 import { useThemeStore, useSettingsStore, useCategoryStore } from '@/stores'
+import { useDataSync } from '@/hooks/useDataSync'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { ReportDialog } from '@/components/report/ReportDialog'
 import type { TaskWithRelations, Category } from '@shared/types'
@@ -22,6 +24,7 @@ function App() {
 function MainApp() {
   const loadTheme = useThemeStore((s) => s.loadTheme)
   const loadSettings = useSettingsStore((s) => s.loadSettings)
+  useDataSync()
 
   // Dialog states
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -124,6 +127,7 @@ function MainApp() {
       />
 
       <ReportDialog open={reportOpen} onOpenChange={setReportOpen} />
+      <Toaster position="top-center" richColors duration={2000} />
     </AppLayout>
   )
 }

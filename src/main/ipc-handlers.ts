@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell, BrowserWindow, app } from 'electron'
+import { ipcMain, dialog, shell, BrowserWindow, app, webContents } from 'electron'
 import { eq, and, or, like, inArray, lt, lte, gte, asc, desc, sql, count } from 'drizzle-orm'
 import { join, extname, basename } from 'path'
 import { existsSync, mkdirSync, copyFileSync, unlinkSync, statSync } from 'fs'
@@ -74,6 +74,15 @@ function enrichTask(task: Task): TaskWithRelations {
     category: category as Category | null,
     tags: tagList as Tag[],
     attachmentCount: attachRow?.count ?? 0
+  }
+}
+
+/** 向所有窗口广播数据变更事件，用于跨窗口同步 */
+function broadcastDataChanged(entity: 'task' | 'category' | 'tag'): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('data-changed', entity)
+    }
   }
 }
 
@@ -208,6 +217,7 @@ export function registerIpcHandlers(): void {
       }
     }
 
+    broadcastDataChanged('task')
     return enrichTask(result)
   })
 
@@ -245,6 +255,7 @@ export function registerIpcHandlers(): void {
     }
 
     const updated = db.select().from(tasks).where(eq(tasks.id, input.id)).get() as Task
+    broadcastDataChanged('task')
     return enrichTask(updated)
   })
 
@@ -263,6 +274,7 @@ export function registerIpcHandlers(): void {
       }
     }
     db.delete(tasks).where(eq(tasks.id, id)).run()
+    broadcastDataChanged('task')
     return { success: true }
   })
 
@@ -286,6 +298,7 @@ export function registerIpcHandlers(): void {
       .where(eq(tasks.id, id))
       .run()
     const updated = db.select().from(tasks).where(eq(tasks.id, id)).get() as Task
+    broadcastDataChanged('task')
     return enrichTask(updated)
   })
 
@@ -299,6 +312,7 @@ export function registerIpcHandlers(): void {
       .where(inArray(tasks.id, ids))
       .run()
     const rows = db.select().from(tasks).where(inArray(tasks.id, ids)).all() as Task[]
+    broadcastDataChanged('task')
     return rows.map(enrichTask)
   })
 
@@ -318,6 +332,7 @@ export function registerIpcHandlers(): void {
       }
     }
     db.delete(tasks).where(inArray(tasks.id, ids)).run()
+    broadcastDataChanged('task')
     return { success: true, count: ids.length }
   })
 
@@ -370,7 +385,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.CATEGORY_CREATE, (_e, input: CreateCategoryInput) => {
     const parentId = input.parentId ?? null
     checkCategoryNameUnique(input.name, parentId)
-    return db
+    const result = db
       .insert(categories)
       .values({
         name: input.name,
@@ -380,6 +395,8 @@ export function registerIpcHandlers(): void {
       })
       .returning()
       .get()
+    broadcastDataChanged('category')
+    return result
   })
 
   ipcMain.handle(IPC_CHANNELS.CATEGORY_UPDATE, (_e, input: UpdateCategoryInput) => {
@@ -405,6 +422,7 @@ export function registerIpcHandlers(): void {
     if (input.parentId !== undefined) updates.parentId = input.parentId
     if (input.sortOrder !== undefined) updates.sortOrder = input.sortOrder
     db.update(categories).set(updates).where(eq(categories.id, input.id)).run()
+    broadcastDataChanged('category')
     return db.select().from(categories).where(eq(categories.id, input.id)).get()
   })
 
@@ -424,6 +442,7 @@ export function registerIpcHandlers(): void {
       db.delete(categories).where(eq(categories.id, catId)).run()
     }
     deleteCategoryRecursive(id, new Set())
+    broadcastDataChanged('category')
     return { success: true }
   })
 
@@ -434,7 +453,7 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.TAG_CREATE, (_e, input: CreateTagInput) => {
-    return db
+    const result = db
       .insert(tags)
       .values({
         name: input.name,
@@ -442,6 +461,8 @@ export function registerIpcHandlers(): void {
       })
       .returning()
       .get()
+    broadcastDataChanged('tag')
+    return result
   })
 
   ipcMain.handle(IPC_CHANNELS.TAG_UPDATE, (_e, input: UpdateTagInput) => {
@@ -449,11 +470,13 @@ export function registerIpcHandlers(): void {
     if (input.name !== undefined) updates.name = input.name
     if (input.color !== undefined) updates.color = input.color
     db.update(tags).set(updates).where(eq(tags.id, input.id)).run()
+    broadcastDataChanged('tag')
     return db.select().from(tags).where(eq(tags.id, input.id)).get()
   })
 
   ipcMain.handle(IPC_CHANNELS.TAG_DELETE, (_e, id: number) => {
     db.delete(tags).where(eq(tags.id, id)).run()
+    broadcastDataChanged('tag')
     return { success: true }
   })
 

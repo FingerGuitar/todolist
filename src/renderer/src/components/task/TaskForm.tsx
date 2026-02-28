@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { CalendarIcon, Sparkles, Loader2, ChevronDown, Check } from 'lucide-react'
@@ -149,6 +150,7 @@ export function TaskForm({ open, onOpenChange, task, defaultCategoryId }: TaskFo
       const due = dueDate ? formatLocalDate(dueDate) : null
 
       if (isEdit) {
+        const oldCatId = task.categoryId
         await updateTask({
           id: task.id,
           title: title.trim(),
@@ -158,6 +160,12 @@ export function TaskForm({ open, onOpenChange, task, defaultCategoryId }: TaskFo
           dueDate: due,
           tagIds: selectedTagIds
         })
+        if (oldCatId !== catId) {
+          const catName = catId !== null
+            ? categories.find((c) => c.id === catId)?.name ?? '未知分类'
+            : '未分类'
+          toast.success(`任务已移到「${catName}」`)
+        }
       } else {
         await createTask({
           title: title.trim(),

@@ -54,6 +54,13 @@ const api = {
   sidebarChangeEdge: (edge: string) => ipcRenderer.invoke('sidebar:change-edge', edge),
   sidebarDragMove: (delta: number) => ipcRenderer.send('sidebar:drag-move', delta),
 
+  // Data sync (cross-window)
+  onDataChanged: (callback: (entity: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, entity: string): void => callback(entity)
+    ipcRenderer.on('data-changed', handler)
+    return () => { ipcRenderer.removeListener('data-changed', handler) }
+  },
+
   // LLM
   llmTest: () => ipcRenderer.invoke('llm:test'),
   llmParseTask: (input: unknown) => ipcRenderer.invoke('llm:parse-task', input),

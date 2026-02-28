@@ -80,6 +80,9 @@ export interface ElectronAPI {
   sidebarChangeEdge(edge: string): Promise<void>
   sidebarDragMove(delta: number): void
 
+  // Data sync (cross-window)
+  onDataChanged(callback: (entity: string) => void): () => void
+
   // LLM
   llmTest(): Promise<LlmTestResult>
   llmParseTask(input: LlmParseTaskInput): Promise<LlmParseTaskResult>

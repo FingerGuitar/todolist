@@ -14,6 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from '@/components/ui/alert-dialog'
+import { toast } from 'sonner'
 import { useTaskStore, useFilterStore, useCategoryStore } from '@/stores'
 import type { ViewType } from '@/stores'
 import { buildCategoryTree, getDescendantIds, flattenCategoryTree } from '@/stores/category-store'
@@ -346,13 +347,17 @@ export function TaskList({ onEditTask, onDecomposeTask }: TaskListProps) {
     try {
       const ids = Array.from(selectedIds)
       await Promise.all(ids.map((id) => updateTask({ id, categoryId: catId })))
+      const catName = catId !== null
+        ? categories.find((c) => c.id === catId)?.name ?? '未知分类'
+        : '未分类'
+      toast.success(`已将 ${ids.length} 个任务移到「${catName}」`)
       setSelectedIds(new Set())
       setSelectionMode(false)
       setBatchCategoryOpen(false)
     } finally {
       setBatchCategorizing(false)
     }
-  }, [selectedIds, updateTask])
+  }, [selectedIds, updateTask, categories])
 
   const batchBar = selectionMode ? (
     <div className="flex items-center gap-2 pb-3 mb-1 border-b border-border/50">
