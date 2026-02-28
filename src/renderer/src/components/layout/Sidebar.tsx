@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Clock,
   CheckCircle2,
+  List,
   Plus,
   Settings,
   CheckSquare,
@@ -98,7 +99,8 @@ const SMART_VIEWS: SmartView[] = [
   { view: 'inbox', icon: Inbox, label: '待办' },
   { view: 'today', icon: CalendarDays, label: '今天' },
   { view: 'upcoming', icon: Clock, label: '即将到来' },
-  { view: 'completed', icon: CheckCircle2, label: '已完成' }
+  { view: 'completed', icon: CheckCircle2, label: '已完成' },
+  { view: 'all', icon: List, label: '全部' }
 ]
 
 interface SidebarProps {
@@ -305,7 +307,15 @@ export function Sidebar({ onAddCategory, onEditCategory, onAddTag, onNewTask, on
 
   const handleSelectCategory = useCallback((id: number) => {
     setCategory(id)
-  }, [setCategory])
+    // 自动展开该分类及其所有后代到最深层级
+    const descendantIds = getDescendantIds(categories, id)
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      next.add(id)
+      for (const did of descendantIds) next.add(did)
+      return next
+    })
+  }, [setCategory, categories])
 
   const handleAddChild = useCallback((parentId: number) => {
     onAddCategory?.(parentId)

@@ -9,12 +9,18 @@ let dockEdge: DockEdge | null = null
 let isExpanded = false
 let moveDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let cooldownUntil = 0
+let hoverPollTimer: ReturnType<typeof setInterval> | null = null
+// Absolute screen coordinate along the sliding axis (Y for left/right, X for top)
+// null = centered
+let dockPosition: number | null = null
 
 const EDGE_THRESHOLD = 2
 const COLLAPSED_SIZE = 6
 const EXPANDED_WIDTH = 360
 const EXPANDED_HEIGHT = 520
 const MOVE_DEBOUNCE = 300
+const HOVER_POLL_INTERVAL = 80
+const HOVER_PADDING = 4
 
 function getWorkArea() {
   return screen.getPrimaryDisplay().workArea
@@ -29,31 +35,63 @@ function detectEdge(mainWindow: BrowserWindow): DockEdge | null {
   return null
 }
 
+function getSlidePos(edge: DockEdge): number {
+  if (dockPosition != null) return dockPosition
+  const wa = getWorkArea()
+  if (edge === 'top') return wa.x + Math.floor((wa.width - EXPANDED_WIDTH) / 2)
+  return wa.y + Math.floor((wa.height - EXPANDED_HEIGHT) / 2)
+}
+
+function clampPos(edge: DockEdge, pos: number): number {
+  const wa = getWorkArea()
+  if (edge === 'top') return Math.max(wa.x, Math.min(pos, wa.x + wa.width - EXPANDED_WIDTH))
+  return Math.max(wa.y, Math.min(pos, wa.y + wa.height - EXPANDED_HEIGHT))
+}
+
 function getCollapsedBounds(edge: DockEdge) {
   const wa = getWorkArea()
-  const centerY = wa.y + Math.floor((wa.height - EXPANDED_HEIGHT) / 2)
-  const centerX = wa.x + Math.floor((wa.width - EXPANDED_WIDTH) / 2)
+  const pos = getSlidePos(edge)
   switch (edge) {
     case 'right':
-      return { x: wa.x + wa.width - COLLAPSED_SIZE, y: centerY, width: COLLAPSED_SIZE, height: EXPANDED_HEIGHT }
+      return { x: wa.x + wa.width - COLLAPSED_SIZE, y: pos, width: COLLAPSED_SIZE, height: EXPANDED_HEIGHT }
     case 'left':
-      return { x: wa.x, y: centerY, width: COLLAPSED_SIZE, height: EXPANDED_HEIGHT }
+      return { x: wa.x, y: pos, width: COLLAPSED_SIZE, height: EXPANDED_HEIGHT }
     case 'top':
-      return { x: centerX, y: wa.y, width: EXPANDED_WIDTH, height: COLLAPSED_SIZE }
+      return { x: pos, y: wa.y, width: EXPANDED_WIDTH, height: COLLAPSED_SIZE }
   }
 }
 
 function getExpandedBounds(edge: DockEdge) {
   const wa = getWorkArea()
-  const centerY = wa.y + Math.floor((wa.height - EXPANDED_HEIGHT) / 2)
-  const centerX = wa.x + Math.floor((wa.width - EXPANDED_WIDTH) / 2)
+  const pos = getSlidePos(edge)
   switch (edge) {
     case 'right':
-      return { x: wa.x + wa.width - EXPANDED_WIDTH, y: centerY, width: EXPANDED_WIDTH, height: EXPANDED_HEIGHT }
+      return { x: wa.x + wa.width - EXPANDED_WIDTH, y: pos, width: EXPANDED_WIDTH, height: EXPANDED_HEIGHT }
     case 'left':
-      return { x: wa.x, y: centerY, width: EXPANDED_WIDTH, height: EXPANDED_HEIGHT }
+      return { x: wa.x, y: pos, width: EXPANDED_WIDTH, height: EXPANDED_HEIGHT }
     case 'top':
-      return { x: centerX, y: wa.y, width: EXPANDED_WIDTH, height: EXPANDED_HEIGHT }
+      return { x: pos, y: wa.y, width: EXPANDED_WIDTH, height: EXPANDED_HEIGHT }
+  }
+}
+
+function startHoverPolling(): void {
+  stopHoverPolling()
+  hoverPollTimer = setInterval(() => {
+    if (!dockWindow || dockWindow.isDestroyed() || !dockEdge || isExpanded) return
+    const cursor = screen.getCursorScreenPoint()
+    const b = dockWindow.getBounds()
+    const inX = cursor.x >= b.x - HOVER_PADDING && cursor.x <= b.x + b.width + HOVER_PADDING
+    const inY = cursor.y >= b.y - HOVER_PADDING && cursor.y <= b.y + b.height + HOVER_PADDING
+    if (inX && inY) {
+      expandDock()
+    }
+  }, HOVER_POLL_INTERVAL)
+}
+
+function stopHoverPolling(): void {
+  if (hoverPollTimer) {
+    clearInterval(hoverPollTimer)
+    hoverPollTimer = null
   }
 }
 
@@ -86,9 +124,12 @@ function createDockWindow(edge: DockEdge): BrowserWindow {
 
   dockWindow.once('ready-to-show', () => {
     dockWindow?.show()
+    dockWindow?.setIgnoreMouseEvents(true)
+    startHoverPolling()
   })
 
   dockWindow.on('closed', () => {
+    stopHoverPolling()
     dockWindow = null
     dockEdge = null
     isExpanded = false
@@ -100,6 +141,8 @@ function createDockWindow(edge: DockEdge): BrowserWindow {
 export function expandDock(): void {
   if (!dockWindow || !dockEdge || isExpanded) return
   isExpanded = true
+  stopHoverPolling()
+  dockWindow.setIgnoreMouseEvents(false)
   dockWindow.setBounds(getExpandedBounds(dockEdge))
 }
 
@@ -107,9 +150,12 @@ export function collapseDock(): void {
   if (!dockWindow || !dockEdge || !isExpanded) return
   isExpanded = false
   dockWindow.setBounds(getCollapsedBounds(dockEdge))
+  dockWindow.setIgnoreMouseEvents(true)
+  startHoverPolling()
 }
 
 export function destroyDockWindow(): void {
+  stopHoverPolling()
   if (dockWindow) {
     dockWindow.destroy()
     dockWindow = null
@@ -126,6 +172,12 @@ function enterDockMode(mainWindow: BrowserWindow, edge: DockEdge): void {
   dockEdge = edge
   mainWindow.hide()
   createDockWindow(edge)
+}
+
+function changeDockEdge(mainWindow: BrowserWindow, edge: DockEdge): void {
+  destroyDockWindow()
+  dockPosition = null
+  enterDockMode(mainWindow, edge)
 }
 
 export function exitDockMode(mainWindow: BrowserWindow | null): void {
@@ -166,6 +218,7 @@ export function setupEdgeDetection(mainWindow: BrowserWindow): void {
     moveDebounceTimer = setTimeout(() => {
       if (isDockActive()) return
       if (mainWindow.isDestroyed() || !mainWindow.isVisible()) return
+      if (mainWindow.isMaximized() || mainWindow.isMinimized()) return
 
       const edge = detectEdge(mainWindow)
       if (edge) {
@@ -190,5 +243,18 @@ export function registerDockIpc(mainWindow: BrowserWindow | null): void {
 
   ipcMain.handle(IPC_CHANNELS.SIDEBAR_SHOW_MAIN, () => {
     exitDockMode(mainWindow)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SIDEBAR_CHANGE_EDGE, (_event, edge: string) => {
+    if (mainWindow && (edge === 'left' || edge === 'top' || edge === 'right')) {
+      changeDockEdge(mainWindow, edge)
+    }
+  })
+
+  ipcMain.on(IPC_CHANNELS.SIDEBAR_DRAG_MOVE, (_event, delta: number) => {
+    if (!dockWindow || !dockEdge || !isExpanded) return
+    const current = getSlidePos(dockEdge)
+    dockPosition = clampPos(dockEdge, current + delta)
+    dockWindow.setBounds(getExpandedBounds(dockEdge))
   })
 }

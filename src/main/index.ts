@@ -43,13 +43,31 @@ function loadWindowState(): WindowState {
 }
 
 function saveWindowState(win: BrowserWindow): void {
+  // 最小化时不保存，避免记录无效尺寸
+  if (win.isMinimized()) return
+
+  if (win.isMaximized()) {
+    // 最大化时只更新 isMaximized 标记，保留正常窗口尺寸
+    try {
+      const statePath = getWindowStatePath()
+      const existing = existsSync(statePath)
+        ? JSON.parse(readFileSync(statePath, 'utf-8'))
+        : { width: 1280, height: 800 }
+      existing.isMaximized = true
+      writeFileSync(statePath, JSON.stringify(existing))
+    } catch {
+      // Ignore write errors
+    }
+    return
+  }
+
   const bounds = win.getBounds()
   const state: WindowState = {
     x: bounds.x,
     y: bounds.y,
     width: bounds.width,
     height: bounds.height,
-    isMaximized: win.isMaximized()
+    isMaximized: false
   }
   try {
     writeFileSync(getWindowStatePath(), JSON.stringify(state))

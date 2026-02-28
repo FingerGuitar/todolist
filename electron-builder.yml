@@ -17,6 +17,8 @@ extraResources:
     to: "icon.png"
   - from: "resources/tray-icon.ico"
     to: "tray-icon.ico"
+  - from: "README.txt"
+    to: "../README.txt"
 win:
   icon: "resources/icon.ico"
   target:

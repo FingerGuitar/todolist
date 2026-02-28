@@ -18,6 +18,7 @@ export function SidebarMode() {
   const edge = useMemo(getEdgeFromURL, [])
   const [expanded, setExpanded] = useState(false)
   const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isDraggingRef = useRef(false)
 
   useEffect(() => {
     loadTheme()
@@ -56,8 +57,18 @@ export function SidebarMode() {
     window.api.sidebarExpand()
   }, [])
 
+  const handleDragStateChange = useCallback((dragging: boolean) => {
+    isDraggingRef.current = dragging
+    if (dragging && collapseTimer.current) {
+      clearTimeout(collapseTimer.current)
+      collapseTimer.current = null
+    }
+  }, [])
+
   const handleMouseLeave = useCallback(() => {
     mouseInsideRef.current = false
+    // 拖拽期间不收缩，避免拖动时面板消失
+    if (isDraggingRef.current) return
     // 输入框聚焦时不收缩，避免打字时侧边栏消失
     const active = document.activeElement
     if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
@@ -95,7 +106,7 @@ export function SidebarMode() {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {expanded ? <SidebarPanel /> : <SidebarCollapsed edge={edge} />}
+      {expanded ? <SidebarPanel edge={edge} onDragStateChange={handleDragStateChange} /> : <SidebarCollapsed edge={edge} />}
     </div>
   )
 }

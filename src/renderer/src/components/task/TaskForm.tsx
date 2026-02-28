@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
-import { CalendarIcon, Sparkles, Loader2 } from 'lucide-react'
+import { CalendarIcon, Sparkles, Loader2, ChevronDown, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Calendar } from '@/components/ui/calendar'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { useTaskStore, useCategoryStore, useTagStore, useSettingsStore } from '@/stores'
+import { buildCategoryTree, flattenCategoryTree, getCategoryPath } from '@/stores/category-store'
 import type { TaskWithRelations, Priority } from '@shared/types'
 import { formatLocalDate, formatDuration } from '@shared/date-utils'
 
@@ -52,6 +54,12 @@ export function TaskForm({ open, onOpenChange, task, defaultCategoryId }: TaskFo
   const showDuration = useSettingsStore((s) => s.settings.showTaskDuration)
 
   const isEdit = !!task
+
+  // 构建层级分类列表
+  const flatCategories = useMemo(
+    () => flattenCategoryTree(buildCategoryTree(categories)),
+    [categories]
+  )
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -221,25 +229,67 @@ export function TaskForm({ open, onOpenChange, task, defaultCategoryId }: TaskFo
 
             <div className="grid gap-2">
               <Label>分类</Label>
-              <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">无分类</SelectItem>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat.id} value={String(cat.id)}>
-                      <span className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    className="justify-between font-normal h-10 w-full"
+                  >
+                    {categoryId !== 'none' ? (
+                      <span className="flex items-center gap-2 truncate">
                         <span
-                          className="h-2 w-2 rounded-full"
-                          style={{ backgroundColor: cat.color }}
+                          className="h-2 w-2 rounded-full shrink-0"
+                          style={{ backgroundColor: categories.find((c) => String(c.id) === categoryId)?.color }}
                         />
-                        {cat.name}
+                        <span className="truncate">
+                          {getCategoryPath(Number(categoryId), categories, ' / ')}
+                        </span>
                       </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    ) : (
+                      <span className="text-muted-foreground">无分类</span>
+                    )}
+                    <ChevronDown className="h-4 w-4 opacity-50 shrink-0 ml-1" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-1" align="start">
+                  <ScrollArea className="max-h-60">
+                    <button
+                      type="button"
+                      className={cn(
+                        'flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-sm cursor-pointer hover:bg-accent',
+                        categoryId === 'none' && 'bg-accent'
+                      )}
+                      onClick={() => setCategoryId('none')}
+                    >
+                      <Check className={cn('h-3.5 w-3.5 shrink-0', categoryId === 'none' ? 'opacity-100' : 'opacity-0')} />
+                      无分类
+                    </button>
+                    {flatCategories.map((cat) => {
+                      const isSelected = categoryId === String(cat.id)
+                      return (
+                        <button
+                          type="button"
+                          key={cat.id}
+                          className={cn(
+                            'flex items-center gap-2 w-full rounded-sm py-1.5 pr-2 text-sm cursor-pointer hover:bg-accent',
+                            isSelected && 'bg-accent'
+                          )}
+                          style={{ paddingLeft: `${8 + cat.depth * 16}px` }}
+                          onClick={() => setCategoryId(String(cat.id))}
+                        >
+                          <Check className={cn('h-3.5 w-3.5 shrink-0', isSelected ? 'opacity-100' : 'opacity-0')} />
+                          <span
+                            className="h-2 w-2 rounded-full shrink-0"
+                            style={{ backgroundColor: cat.color }}
+                          />
+                          <span className="truncate">{cat.name}</span>
+                        </button>
+                      )
+                    })}
+                  </ScrollArea>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 

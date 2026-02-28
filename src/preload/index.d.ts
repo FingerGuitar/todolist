@@ -77,6 +77,8 @@ export interface ElectronAPI {
   sidebarExpand(): Promise<void>
   sidebarCollapse(): Promise<void>
   sidebarShowMain(): Promise<void>
+  sidebarChangeEdge(edge: string): Promise<void>
+  sidebarDragMove(delta: number): void
 
   // LLM
   llmTest(): Promise<LlmTestResult>

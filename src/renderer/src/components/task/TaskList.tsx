@@ -1,7 +1,9 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
-import { Loader2, Inbox, CalendarCheck, ListChecks, Plus, X, CheckSquare, Trash2 } from 'lucide-react'
+import { Loader2, Inbox, CalendarCheck, ListChecks, Plus, X, CheckSquare, Trash2, ChevronRight, ChevronDown, FolderTree, Check } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,20 +14,73 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from '@/components/ui/alert-dialog'
-import { useTaskStore, useFilterStore } from '@/stores'
+import { useTaskStore, useFilterStore, useCategoryStore } from '@/stores'
 import type { ViewType } from '@/stores'
+import { buildCategoryTree, getDescendantIds, flattenCategoryTree } from '@/stores/category-store'
+import type { CategoryTreeNode } from '@/stores/category-store'
 import type { TaskWithRelations } from '@shared/types'
 import { formatLocalDate } from '@shared/date-utils'
 import { TaskItem } from './TaskItem'
 
-interface TaskGroup {
+/** 层级化的任务分类树节点 */
+interface TaskCategoryTree {
   categoryId: number | null
   categoryName: string
   categoryColor: string
   tasks: TaskWithRelations[]
+  children: TaskCategoryTree[]
 }
 
-const GROUPED_VIEWS: Set<ViewType> = new Set(['inbox', 'today', 'upcoming', 'completed', 'all'])
+/** 统计子树中所有任务数 */
+function countTreeTasks(node: TaskCategoryTree): number {
+  let count = node.tasks.length
+  for (const child of node.children) count += countTreeTasks(child)
+  return count
+}
+
+/** 从分类树 + 任务列表构建层级化的任务分类树（只保留有任务的分支） */
+function buildTaskCategoryTree(
+  catTree: CategoryTreeNode[],
+  tasksByCategory: Map<number | null, TaskWithRelations[]>
+): TaskCategoryTree[] {
+  function visit(node: CategoryTreeNode): TaskCategoryTree | null {
+    const directTasks = tasksByCategory.get(node.id) || []
+    const children: TaskCategoryTree[] = []
+    for (const child of node.children) {
+      const childNode = visit(child)
+      if (childNode) children.push(childNode)
+    }
+    if (directTasks.length === 0 && children.length === 0) return null
+    return {
+      categoryId: node.id,
+      categoryName: node.name,
+      categoryColor: node.color,
+      tasks: directTasks,
+      children
+    }
+  }
+
+  const result: TaskCategoryTree[] = []
+  for (const root of catTree) {
+    const node = visit(root)
+    if (node) result.push(node)
+  }
+
+  // 未分类任务放最后
+  const uncategorized = tasksByCategory.get(null)
+  if (uncategorized && uncategorized.length > 0) {
+    result.push({
+      categoryId: null,
+      categoryName: '未分类',
+      categoryColor: '#9ca3af',
+      tasks: uncategorized,
+      children: []
+    })
+  }
+  return result
+}
+
+const SMART_VIEWS: Set<ViewType> = new Set(['inbox', 'today', 'upcoming', 'completed', 'all'])
 
 const EMPTY_STATE: Record<ViewType, { icon: typeof Inbox; text: string; desc: string }> = {
   inbox: { icon: Inbox, text: '暂无待办', desc: '点击右上角按钮创建第一个任务' },
@@ -35,6 +90,125 @@ const EMPTY_STATE: Record<ViewType, { icon: typeof Inbox; text: string; desc: st
   category: { icon: Inbox, text: '该分类下暂无任务', desc: '试试将任务添加到此分类' },
   tag: { icon: Inbox, text: '该标签下暂无任务', desc: '试试给任务添加此标签' },
   all: { icon: Inbox, text: '暂无任务', desc: '点击右上角按钮创建第一个任务' }
+}
+
+/** 内容区分类筛选节点（递归） */
+function ContentCategoryNode({
+  node,
+  depth,
+  selectedId,
+  onSelect,
+  collapsedIds,
+  onToggleCollapse
+}: {
+  node: TaskCategoryTree
+  depth: number
+  selectedId: number | null | undefined
+  onSelect: (id: number | null) => void
+  collapsedIds: Set<number | null>
+  onToggleCollapse: (id: number | null) => void
+}) {
+  const isSelected = selectedId === node.categoryId
+  const totalCount = countTreeTasks(node)
+  const hasChildren = node.children.length > 0
+  const isCollapsed = collapsedIds.has(node.categoryId)
+  const paddingLeft = depth * 12
+
+  return (
+    <div>
+      <div
+        className={`flex items-center w-full py-1.5 rounded-md text-xs cursor-pointer hover:bg-muted/50 transition-colors ${isSelected ? 'bg-muted font-medium' : ''}`}
+        style={{ paddingLeft, paddingRight: 8 }}
+      >
+        <button
+          type="button"
+          className={`h-4 w-4 shrink-0 flex items-center justify-center ${!hasChildren ? 'invisible' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleCollapse(node.categoryId)
+          }}
+        >
+          {hasChildren && (isCollapsed
+            ? <ChevronRight className="h-3 w-3 text-muted-foreground/60" />
+            : <ChevronDown className="h-3 w-3 text-muted-foreground/60" />
+          )}
+        </button>
+        <button
+          type="button"
+          className="flex flex-1 items-center gap-1.5 min-w-0"
+          onClick={() => onSelect(node.categoryId)}
+        >
+          <span
+            className="h-2 w-2 rounded-full shrink-0"
+            style={{ backgroundColor: node.categoryColor }}
+          />
+          <span className="truncate">{node.categoryName}</span>
+          <span className="text-[10px] text-muted-foreground/60 ml-auto shrink-0">{totalCount}</span>
+        </button>
+      </div>
+      {hasChildren && !isCollapsed && node.children.map((child) => (
+        <ContentCategoryNode
+          key={child.categoryId ?? 'uncategorized'}
+          node={child}
+          depth={depth + 1}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          collapsedIds={collapsedIds}
+          onToggleCollapse={onToggleCollapse}
+        />
+      ))}
+    </div>
+  )
+}
+
+/** 内容区分类筛选面板 */
+function ContentCategoryFilter({
+  taskTree,
+  selectedId,
+  onSelect,
+  totalCount
+}: {
+  taskTree: TaskCategoryTree[]
+  selectedId: number | null | undefined
+  onSelect: (id: number | null | undefined) => void
+  totalCount: number
+}) {
+  const [collapsedIds, setCollapsedIds] = useState<Set<number | null>>(new Set())
+
+  const handleToggleCollapse = useCallback((id: number | null) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  return (
+    <ScrollArea className="w-[180px] shrink-0 border-r border-border/30">
+      <div className="pr-2 py-1">
+        <button
+          type="button"
+          onClick={() => onSelect(undefined)}
+          className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs cursor-pointer hover:bg-muted/50 transition-colors ${selectedId === undefined ? 'bg-muted font-medium' : ''}`}
+        >
+          <span className="truncate">全部</span>
+          <span className="text-[10px] text-muted-foreground/60 ml-auto">{totalCount}</span>
+        </button>
+        {taskTree.map((node) => (
+          <ContentCategoryNode
+            key={node.categoryId ?? 'uncategorized'}
+            node={node}
+            depth={0}
+            selectedId={selectedId}
+            onSelect={onSelect}
+            collapsedIds={collapsedIds}
+            onToggleCollapse={handleToggleCollapse}
+          />
+        ))}
+      </div>
+    </ScrollArea>
+  )
 }
 
 interface TaskListProps {
@@ -48,6 +222,7 @@ export function TaskList({ onEditTask, onDecomposeTask }: TaskListProps) {
     currentView, searchQuery, selectedCategoryId, selectedTagId,
     sortBy, sortOrder, getFilter
   } = useFilterStore()
+  const { categories } = useCategoryStore()
 
   const [quickTitle, setQuickTitle] = useState('')
   const [quickAdding, setQuickAdding] = useState(false)
@@ -57,6 +232,17 @@ export function TaskList({ onEditTask, onDecomposeTask }: TaskListProps) {
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [batchDeleteConfirmOpen, setBatchDeleteConfirmOpen] = useState(false)
+
+  // 批量分类
+  const [batchCategoryOpen, setBatchCategoryOpen] = useState(false)
+  const [batchCategorizing, setBatchCategorizing] = useState(false)
+  const flatCategories = useMemo(
+    () => flattenCategoryTree(buildCategoryTree(categories)),
+    [categories]
+  )
+
+  // 内容区分类筛选（undefined=全部, null=未分类, number=具体分类）
+  const [contentCategoryId, setContentCategoryId] = useState<number | null | undefined>(undefined)
 
   const toggleSelect = useCallback((id: number) => {
     setSelectedIds((prev) => {
@@ -76,39 +262,40 @@ export function TaskList({ onEditTask, onDecomposeTask }: TaskListProps) {
     setSelectionMode(false)
   }, [])
 
-  // Clear selection on view/filter change
+  // Clear selection and category filter on view/filter change
   useEffect(() => {
     setSelectedIds(new Set())
     setSelectionMode(false)
+    setContentCategoryId(undefined)
   }, [currentView, searchQuery, selectedCategoryId, selectedTagId, sortBy, sortOrder])
 
   useEffect(() => {
     fetchTasks(getFilter())
   }, [currentView, searchQuery, selectedCategoryId, selectedTagId, sortBy, sortOrder, fetchTasks, getFilter])
 
-  const groupedTasks = useMemo<TaskGroup[] | null>(() => {
-    if (!GROUPED_VIEWS.has(currentView) || tasks.length === 0) return null
+  const taskTree = useMemo<TaskCategoryTree[] | null>(() => {
+    if (!SMART_VIEWS.has(currentView) || tasks.length === 0) return null
 
-    const groupMap = new Map<number | null, TaskGroup>()
+    const tasksByCategory = new Map<number | null, TaskWithRelations[]>()
     for (const task of tasks) {
       const key = task.categoryId
-      if (!groupMap.has(key)) {
-        groupMap.set(key, {
-          categoryId: key,
-          categoryName: task.category?.name ?? '未分类',
-          categoryColor: task.category?.color ?? '#9ca3af',
-          tasks: []
-        })
-      }
-      groupMap.get(key)!.tasks.push(task)
+      if (!tasksByCategory.has(key)) tasksByCategory.set(key, [])
+      tasksByCategory.get(key)!.push(task)
     }
 
-    return Array.from(groupMap.values()).sort((a, b) => {
-      if (a.categoryId === null) return 1
-      if (b.categoryId === null) return -1
-      return a.categoryName.localeCompare(b.categoryName)
-    })
-  }, [tasks, currentView])
+    const catTree = buildCategoryTree(categories)
+    return buildTaskCategoryTree(catTree, tasksByCategory)
+  }, [tasks, currentView, categories])
+
+  const isSmartView = SMART_VIEWS.has(currentView)
+
+  const displayedTasks = useMemo(() => {
+    if (!isSmartView || contentCategoryId === undefined) return tasks
+    if (contentCategoryId === null) return tasks.filter((t) => t.categoryId === null)
+    const descendantIds = getDescendantIds(categories, contentCategoryId)
+    const validIds = new Set([contentCategoryId, ...descendantIds])
+    return tasks.filter((t) => t.categoryId !== null && validIds.has(t.categoryId))
+  }, [tasks, isSmartView, contentCategoryId, categories])
 
   const handleQuickAdd = useCallback(async () => {
     const title = quickTitle.trim()
@@ -138,6 +325,13 @@ export function TaskList({ onEditTask, onDecomposeTask }: TaskListProps) {
     setSelectionMode(false)
   }, [selectedIds, batchComplete])
 
+  const handleBatchUncomplete = useCallback(async () => {
+    const ids = Array.from(selectedIds)
+    await batchComplete(ids, false)
+    setSelectedIds(new Set())
+    setSelectionMode(false)
+  }, [selectedIds, batchComplete])
+
   const handleBatchDelete = useCallback(async () => {
     const ids = Array.from(selectedIds)
     await batchDelete(ids)
@@ -145,6 +339,20 @@ export function TaskList({ onEditTask, onDecomposeTask }: TaskListProps) {
     setSelectionMode(false)
     setBatchDeleteConfirmOpen(false)
   }, [selectedIds, batchDelete])
+
+  const { updateTask } = useTaskStore()
+  const handleBatchCategorize = useCallback(async (catId: number | null) => {
+    setBatchCategorizing(true)
+    try {
+      const ids = Array.from(selectedIds)
+      await Promise.all(ids.map((id) => updateTask({ id, categoryId: catId })))
+      setSelectedIds(new Set())
+      setSelectionMode(false)
+      setBatchCategoryOpen(false)
+    } finally {
+      setBatchCategorizing(false)
+    }
+  }, [selectedIds, updateTask])
 
   const batchBar = selectionMode ? (
     <div className="flex items-center gap-2 pb-3 mb-1 border-b border-border/50">
@@ -155,10 +363,51 @@ export function TaskList({ onEditTask, onDecomposeTask }: TaskListProps) {
       <Button variant="outline" size="sm" onClick={selectAll}>
         全选
       </Button>
-      <Button variant="outline" size="sm" onClick={handleBatchComplete}>
-        <CheckSquare className="h-3.5 w-3.5 mr-1" />
-        完成
-      </Button>
+      {currentView === 'completed' ? (
+        <Button variant="outline" size="sm" onClick={handleBatchUncomplete}>
+          <CheckSquare className="h-3.5 w-3.5 mr-1" />
+          恢复
+        </Button>
+      ) : (
+        <Button variant="outline" size="sm" onClick={handleBatchComplete}>
+          <CheckSquare className="h-3.5 w-3.5 mr-1" />
+          完成
+        </Button>
+      )}
+      <Popover open={batchCategoryOpen} onOpenChange={setBatchCategoryOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" disabled={batchCategorizing}>
+            <FolderTree className="h-3.5 w-3.5 mr-1" />
+            分类
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-52 p-1" align="start">
+          <ScrollArea className="max-h-60">
+            <button
+              type="button"
+              className="flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-sm cursor-pointer hover:bg-accent"
+              onClick={() => handleBatchCategorize(null)}
+            >
+              无分类
+            </button>
+            {flatCategories.map((cat) => (
+              <button
+                type="button"
+                key={cat.id}
+                className="flex items-center gap-2 w-full rounded-sm py-1.5 pr-2 text-sm cursor-pointer hover:bg-accent"
+                style={{ paddingLeft: `${8 + cat.depth * 16}px` }}
+                onClick={() => handleBatchCategorize(cat.id)}
+              >
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{ backgroundColor: cat.color }}
+                />
+                <span className="truncate">{cat.name}</span>
+              </button>
+            ))}
+          </ScrollArea>
+        </PopoverContent>
+      </Popover>
       <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setBatchDeleteConfirmOpen(true)}>
         <Trash2 className="h-3.5 w-3.5 mr-1" />
         删除
@@ -169,13 +418,32 @@ export function TaskList({ onEditTask, onDecomposeTask }: TaskListProps) {
     </div>
   ) : null
 
-  const quickAddBar = (
+  const currentCategory = currentView === 'category' && selectedCategoryId !== null
+    ? categories.find((c) => c.id === selectedCategoryId)
+    : null
+  const quickAddPlaceholder = currentCategory
+    ? `在「${currentCategory.name}」下添加任务，按回车确认...`
+    : '输入任务标题，按回车快速添加...'
+
+  const quickAddBar = currentView === 'completed' ? (
+    <div className="flex items-center gap-2 pb-3 mb-1 border-b border-border/50">
+      <span className="flex-1 text-sm text-muted-foreground">已完成 {tasks.length} 项</span>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setSelectionMode(true)}
+      >
+        <CheckSquare className="h-3.5 w-3.5 mr-1" />
+        批量操作
+      </Button>
+    </div>
+  ) : (
     <div className="flex items-center gap-2 pb-3 mb-1 border-b border-border/50">
       <Plus className="h-4 w-4 text-muted-foreground shrink-0" />
       <input
         ref={inputRef}
         type="text"
-        placeholder="输入任务标题，按回车快速添加..."
+        placeholder={quickAddPlaceholder}
         value={quickTitle}
         onChange={(e) => setQuickTitle(e.target.value)}
         onKeyDown={(e) => {
@@ -239,36 +507,33 @@ export function TaskList({ onEditTask, onDecomposeTask }: TaskListProps) {
 
   return (
     <>
-      <ScrollArea className="h-full">
-        {batchBar ?? quickAddBar}
-        {groupedTasks ? (
-          <div className="space-y-4">
-            {groupedTasks.map((group) => (
-              <div key={group.categoryId ?? 'uncategorized'}>
-                <div className="flex items-center gap-2 px-1 pb-1.5">
-                  <span
-                    className="h-2.5 w-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: group.categoryColor }}
-                  />
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {group.categoryName}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground/60">
-                    {group.tasks.length}
-                  </span>
-                </div>
+      {isSmartView && taskTree && taskTree.length > 0 ? (
+        <div className="flex h-full">
+          <ContentCategoryFilter
+            taskTree={taskTree}
+            selectedId={contentCategoryId}
+            onSelect={setContentCategoryId}
+            totalCount={tasks.length}
+          />
+          <div className="flex-1 min-w-0">
+            <ScrollArea className="h-full">
+              <div className="pl-3">
+                {batchBar ?? quickAddBar}
                 <div className="space-y-1">
-                  {group.tasks.map(renderTaskItem)}
+                  {displayedTasks.map(renderTaskItem)}
                 </div>
               </div>
-            ))}
+            </ScrollArea>
           </div>
-        ) : (
+        </div>
+      ) : (
+        <ScrollArea className="h-full">
+          {batchBar ?? quickAddBar}
           <div className="space-y-1">
             {tasks.map(renderTaskItem)}
           </div>
-        )}
-      </ScrollArea>
+        </ScrollArea>
+      )}
 
       {/* Batch delete confirmation */}
       <AlertDialog open={batchDeleteConfirmOpen} onOpenChange={setBatchDeleteConfirmOpen}>

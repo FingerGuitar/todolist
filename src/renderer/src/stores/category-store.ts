@@ -48,6 +48,43 @@ export function getDescendantIds(cats: Category[], parentId: number): number[] {
   return ids
 }
 
+/** 扁平化分类树，带深度信息（用于层级下拉选择） */
+export interface FlatCategoryItem {
+  id: number
+  name: string
+  color: string
+  depth: number
+}
+
+export function flattenCategoryTree(nodes: CategoryTreeNode[], depth = 0): FlatCategoryItem[] {
+  const result: FlatCategoryItem[] = []
+  for (const node of nodes) {
+    result.push({ id: node.id, name: node.name, color: node.color, depth })
+    if (node.children.length > 0) {
+      result.push(...flattenCategoryTree(node.children, depth + 1))
+    }
+  }
+  return result
+}
+
+/** 获取分类的完整路径（从根到叶，用分隔符连接） */
+export function getCategoryPath(categoryId: number, categories: Category[], separator = '-'): string {
+  const path: string[] = []
+  let currentId: number | null = categoryId
+  const visited = new Set<number>()
+
+  while (currentId !== null) {
+    if (visited.has(currentId)) break
+    visited.add(currentId)
+    const cat = categories.find((c) => c.id === currentId)
+    if (!cat) break
+    path.unshift(cat.name)
+    currentId = cat.parentId
+  }
+
+  return path.join(separator)
+}
+
 export interface CategoryState {
   categories: Category[]
   loading: boolean

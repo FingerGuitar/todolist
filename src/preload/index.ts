@@ -51,6 +51,8 @@ const api = {
   sidebarExpand: () => ipcRenderer.invoke('sidebar:expand'),
   sidebarCollapse: () => ipcRenderer.invoke('sidebar:collapse'),
   sidebarShowMain: () => ipcRenderer.invoke('sidebar:show-main'),
+  sidebarChangeEdge: (edge: string) => ipcRenderer.invoke('sidebar:change-edge', edge),
+  sidebarDragMove: (delta: number) => ipcRenderer.send('sidebar:drag-move', delta),
 
   // LLM
   llmTest: () => ipcRenderer.invoke('llm:test'),

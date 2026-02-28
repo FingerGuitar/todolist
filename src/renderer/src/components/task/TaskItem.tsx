@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { MoreHorizontal, Flag, Pencil, Trash2, CalendarDays, GitBranch } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { MoreHorizontal, Flag, Pencil, Trash2, CalendarDays, GitBranch, Copy } from 'lucide-react'
 import { format, isToday, isTomorrow, isPast, differenceInDays, startOfDay } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -70,12 +70,58 @@ function formatDueDate(dueDate: string): { label: string; overdue: boolean } {
 export function TaskItem({ task, onEdit, onDecompose, selectionMode, selected, onToggleSelect }: TaskItemProps) {
   const toggleComplete = useTaskStore((s) => s.toggleComplete)
   const deleteTask = useTaskStore((s) => s.deleteTask)
+  const updateTask = useTaskStore((s) => s.updateTask)
   const showDuration = useSettingsStore((s) => s.settings.showTaskDuration)
   const confirmBeforeDelete = useSettingsStore((s) => s.settings.confirmBeforeDelete)
   const llmEnabled = useSettingsStore((s) => s.settings.llm.enabled)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [noteText, setNoteText] = useState(task.description ?? '')
+  const [saving, setSaving] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const isCompleted = task.status === STATUS.COMPLETED
+
+  // Sync noteText when task.description changes externally
+  useEffect(() => {
+    if (!expanded) {
+      setNoteText(task.description ?? '')
+    }
+  }, [task.description, expanded])
+
+  // Auto-focus textarea when expanded
+  useEffect(() => {
+    if (expanded && textareaRef.current) {
+      textareaRef.current.focus()
+    }
+  }, [expanded])
+
+  const saveNote = useCallback(async () => {
+    const trimmed = noteText.trim()
+    const original = (task.description ?? '').trim()
+    if (trimmed !== original) {
+      setSaving(true)
+      try {
+        await updateTask({ id: task.id, description: trimmed })
+      } finally {
+        setSaving(false)
+      }
+    }
+  }, [noteText, task.description, task.id, updateTask])
+
+  // Click outside to collapse (save before closing)
+  useEffect(() => {
+    if (!expanded) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        saveNote()
+        setExpanded(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [expanded, saveNote])
 
   const dueInfo = useMemo(
     () => (task.dueDate ? formatDueDate(task.dueDate) : null),
@@ -84,12 +130,20 @@ export function TaskItem({ task, onEdit, onDecompose, selectionMode, selected, o
 
   return (
     <div
+      ref={containerRef}
       className={cn(
-        'group flex items-center gap-3 rounded-lg border-l-[3px] px-3 py-2.5',
+        'group flex gap-3 rounded-lg border-l-[3px] px-3 py-2.5',
+        expanded ? 'items-start' : 'items-center',
         'transition-colors hover:bg-accent/50 cursor-pointer',
         PRIORITY_COLORS[task.priority] ?? 'border-l-transparent'
       )}
-      onClick={() => onEdit(task)}
+      onClick={() => {
+        if (selectionMode && onToggleSelect) {
+          onToggleSelect(task.id)
+        } else {
+          setExpanded((prev) => !prev)
+        }
+      }}
     >
       {/* Checkbox: selection mode → select checkbox; normal → complete checkbox */}
       <div onClick={(e) => e.stopPropagation()}>
@@ -128,6 +182,34 @@ export function TaskItem({ task, onEdit, onDecompose, selectionMode, selected, o
             {task.title}
           </span>
         </div>
+
+        {/* Note preview (collapsed) */}
+        {!expanded && task.description && (
+          <p className="text-xs text-muted-foreground truncate mt-0.5">
+            {task.description}
+          </p>
+        )}
+
+        {/* Note editor (expanded) */}
+        {expanded && (
+          <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+            <textarea
+              ref={textareaRef}
+              className={cn(
+                'w-full text-xs bg-transparent border border-border rounded-md px-2 py-1.5',
+                'resize-none outline-none focus:ring-1 focus:ring-ring',
+                'placeholder:text-muted-foreground/60',
+                saving && 'opacity-60'
+              )}
+              rows={3}
+              placeholder="添加备注..."
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              onBlur={saveNote}
+              disabled={saving}
+            />
+          </div>
+        )}
 
         {/* Tags + Category */}
         {(task.tags.length > 0 || task.category) && (
@@ -191,6 +273,15 @@ export function TaskItem({ task, onEdit, onDecompose, selectionMode, selected, o
             <DropdownMenuItem onClick={() => onEdit(task)}>
               <Pencil className="h-4 w-4 mr-2" />
               编辑
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => {
+              const text = task.description
+                ? `${task.title}\n${task.description}`
+                : task.title
+              navigator.clipboard.writeText(text)
+            }}>
+              <Copy className="h-4 w-4 mr-2" />
+              复制
             </DropdownMenuItem>
             {llmEnabled && onDecompose && (
               <DropdownMenuItem onClick={() => onDecompose(task)}>

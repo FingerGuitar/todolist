@@ -303,6 +303,8 @@ export const IPC_CHANNELS = {
   SIDEBAR_EXPAND: 'sidebar:expand',
   SIDEBAR_COLLAPSE: 'sidebar:collapse',
   SIDEBAR_SHOW_MAIN: 'sidebar:show-main',
+  SIDEBAR_CHANGE_EDGE: 'sidebar:change-edge',
+  SIDEBAR_DRAG_MOVE: 'sidebar:drag-move',
   // LLM
   LLM_TEST: 'llm:test',
   LLM_PARSE_TASK: 'llm:parse-task',
